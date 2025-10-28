@@ -152,16 +152,15 @@
             return true;
         }
 
-        // Предотвращаем любые непреднамеренные переходы
-        window.addEventListener('beforeunload', (e) => {
-            // Если есть активный процесс bridge, предупреждаем
-            const bridgeModal = document.getElementById('bridgeModal');
-            if (bridgeModal && bridgeModal.style.display === 'block') {
-                e.preventDefault();
-                e.returnValue = 'Bridge процесс в процессе. Вы уверены?';
-                return e.returnValue;
-            }
-        });
+        // Закомментировано - мешает при разработке
+        // window.addEventListener('beforeunload', (e) => {
+        //     const bridgeModal = document.getElementById('bridgeModal');
+        //     if (bridgeModal && bridgeModal.style.display === 'block') {
+        //         e.preventDefault();
+        //         e.returnValue = 'Bridge процесс в процессе. Вы уверены?';
+        //         return e.returnValue;
+        //     }
+        // });
 
         window.addEventListener('load', async () => {
             console.log('🚀 Page loaded, initializing...');
