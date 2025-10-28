@@ -559,6 +559,16 @@ async function placeBet(event) {
         console.log('Proxy address:', savedProxy);
         console.log('Bet amount (BNB):', amountBNB);
         
+        // Проверка сети - должна быть BSC
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const network = await provider.getNetwork();
+        console.log('Current network:', network.chainId, network.name);
+        
+        if (network.chainId !== 56) {
+            alert(`❌ Неверная сеть!\n\nТекущая сеть: ${network.name || network.chainId}\nНужна: BNB Smart Chain (BSC)\n\nПереключите сеть в кошельке на BSC и попробуйте снова.`);
+            return false;
+        }
+        
         // 2. Показать bridge modal и запустить процесс
         console.log('Opening bridge process modal...');
         await showBridgeProcess(amountBNB, savedProxy);

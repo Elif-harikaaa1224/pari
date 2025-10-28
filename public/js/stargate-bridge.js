@@ -66,6 +66,12 @@ class StargateBridge {
     // Swap BNB → USDT на PancakeSwap
     async swapBNBtoUSDT(amountBNB, signer, onStatusUpdate) {
         try {
+            // Проверяем что мы на BSC
+            const network = await signer.provider.getNetwork();
+            if (network.chainId !== 56) {
+                throw new Error(`Неверная сеть! Нужна BSC (chainId: 56), текущая: ${network.chainId}. Переключите сеть в кошельке на BNB Smart Chain.`);
+            }
+            
             const routerABI = [
                 'function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable returns (uint[] memory amounts)',
                 'function getAmountsOut(uint amountIn, address[] memory path) public view returns (uint[] memory amounts)'
@@ -76,6 +82,13 @@ class StargateBridge {
             
             // Получаем expected amount
             const path = [this.bsc.wbnb, this.bsc.usdt];
+            
+            console.log('Calling getAmountsOut with:', {
+                amountWei: amountWei.toString(),
+                path,
+                router: this.bsc.pancakeRouter
+            });
+            
             const amounts = await router.getAmountsOut(amountWei, path);
             const expectedUSDT = amounts[1];
             
