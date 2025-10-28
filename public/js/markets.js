@@ -529,15 +529,26 @@ async function placeBet() {
             return;
         }
 
+        // Проверка наличия Symbiosis
+        if (typeof symbiosisBridge === 'undefined') {
+            alert('❌ Symbiosis Bridge не загружен! Перезагрузите страницу.');
+            console.error('symbiosisBridge is undefined!');
+            return;
+        }
+
         console.log('=== Starting bet placement ===');
         console.log('Connected wallet address:', wallet.address);
         console.log('Proxy address:', savedProxy);
         console.log('Bet amount (BNB):', amountBNB);
+        console.log('Symbiosis bridge available:', typeof symbiosisBridge);
 
         // 2. Переключаемся на BSC для bridge
+        console.log('Switching to BSC...');
         await wallet.switchToBSC();
+        console.log('Switched to BSC successfully');
         
         // 3. Показать bridge modal и выполнить bridge
+        console.log('Opening bridge process modal...');
         await showBridgeProcess(amountBNB, savedProxy);
 
     } catch (error) {
@@ -547,13 +558,22 @@ async function placeBet() {
 }
 
 async function showBridgeProcess(amountBNB, proxyAddress) {
+    console.log('=== showBridgeProcess called ===');
+    console.log('Amount BNB:', amountBNB);
+    console.log('Proxy address:', proxyAddress);
+    console.log('symbiosisBridge exists:', typeof symbiosisBridge !== 'undefined');
+    
     // Open bridge modal
+    console.log('Closing betting modal...');
     document.getElementById('bettingModal').style.display = 'none';
+    console.log('Opening bridge modal...');
     document.getElementById('bridgeModal').style.display = 'block';
+    console.log('Modals switched');
 
     // Получаем реальную цену BNB
     const bnbPrice = bnbPriceTracker.getPrice();
     const usdcAmount = amountBNB * bnbPrice;
+    console.log('BNB price:', bnbPrice, 'USDC amount:', usdcAmount);
 
     // Безопасное обновление элементов
     const updateElement = (id, value) => {

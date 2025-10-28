@@ -1,118 +1,119 @@
 // Symbiosis Bridge Integration
-// Handles cross-chain swaps from BSC to Polygon
+// Handles cross-chain swaps from BSC to Polygon using Symbiosis API
 
 class SymbiosisBridge {
     constructor() {
-        this.initialized = false;
-        this.symbiosis = null;
+        this.initialized = true; // Всегда готов к работе
+        this.apiUrl = 'https://api-v2.symbiosis.finance/crosschain/v1';
     }
 
-    // Initialize Symbiosis SDK
-    async init() {
-        if (this.initialized) return;
-
-        try {
-            console.log('Initializing Symbiosis SDK...');
-            
-            // Symbiosis будет загружен через CDN в HTML
-            if (typeof Symbiosis === 'undefined') {
-                throw new Error('Symbiosis SDK not loaded. Add script to HTML.');
-            }
-
-            // Создаем экземпляр Symbiosis
-            // Используем mainnet конфигурацию
-            this.symbiosis = new Symbiosis('mainnet', 'PariVision');
-            
-            this.initialized = true;
-            console.log('✓ Symbiosis SDK initialized');
-        } catch (error) {
-            console.error('Failed to initialize Symbiosis:', error);
-            throw error;
-        }
-    }
-
-    // Свап BNB -> USDC с BSC на Polygon
+    // Свап BNB -> USDC с BSC на Polygon через Symbiosis API
     async swapBNBtoUSDC(amountBNB, toAddress, provider, onStatusUpdate) {
         try {
-            await this.init();
-
             console.log('=== Starting Symbiosis Bridge ===');
             console.log('Amount BNB:', amountBNB);
             console.log('To address:', toAddress);
 
-            // 1. Настройка токенов
-            const tokenAmountIn = {
-                chainId: 56, // BSC
-                address: '', // Пустой адрес = нативный токен (BNB)
-                symbol: 'BNB',
-                decimals: 18,
-                amount: ethers.utils.parseEther(amountBNB.toString()).toString()
-            };
+            const signer = provider.getSigner();
+            const fromAddress = await signer.getAddress();
 
-            const tokenOut = {
-                chainId: 137, // Polygon
-                address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC on Polygon
-                symbol: 'USDC',
-                decimals: 6
-            };
+            // 1. Получаем quote и transaction data от Symbiosis API
+            onStatusUpdate?.('⏳ Получение quote от Symbiosis...');
 
-            onStatusUpdate?.('⏳ Расчет оптимального маршрута...');
-
-            // 2. Получаем лучший маршрут для свапа
-            const swapping = this.symbiosis.newSwapping();
-            
-            const { route, tokenAmountOut, approveTo, feeToken } = await swapping.exactIn(
-                tokenAmountIn,
-                tokenOut,
-                toAddress, // Получатель на Polygon
-                5, // slippage 5%
-                Math.floor(Date.now() / 1000) + 20 * 60 // deadline 20 минут
+            const quoteData = await this.getSwapData(
+                amountBNB,
+                fromAddress,
+                toAddress
             );
 
-            console.log('Route calculated:');
-            console.log('- Input:', tokenAmountIn.amount, 'BNB');
-            console.log('- Output:', ethers.utils.formatUnits(tokenAmountOut, 6), 'USDC');
-            console.log('- Fee token:', feeToken.symbol);
+            console.log('Quote received:', quoteData);
 
-            onStatusUpdate?.(`✓ Получите ≈${ethers.utils.formatUnits(tokenAmountOut, 6)} USDC`);
+            const estimatedOutput = parseFloat(quoteData.amountOut) / 1e6; // USDC имеет 6 decimals
+            console.log('Estimated USDC output:', estimatedOutput);
 
-            // 3. Выполняем swap
+            onStatusUpdate?.(`✓ Получите ≈${estimatedOutput.toFixed(2)} USDC`);
+
+            // 2. Выполняем транзакцию
             onStatusUpdate?.('⏳ Подтвердите транзакцию в MetaMask...');
 
-            const signer = provider.getSigner();
-            
-            const txRequest = {
-                to: route.transactionRequest.to,
-                data: route.transactionRequest.data,
-                value: route.transactionRequest.value || tokenAmountIn.amount,
-                gasLimit: route.transactionRequest.gasLimit || 500000
-            };
+            const tx = await signer.sendTransaction({
+                to: quoteData.tx.to,
+                data: quoteData.tx.data,
+                value: quoteData.tx.value,
+                gasLimit: quoteData.tx.gas || 500000
+            });
 
-            console.log('Sending transaction:', txRequest);
-            const tx = await signer.sendTransaction(txRequest);
-            
             onStatusUpdate?.('⏳ Транзакция отправлена! Ожидание подтверждения...');
             console.log('Transaction hash:', tx.hash);
 
-            // 4. Ждем подтверждения
             const receipt = await tx.wait();
             console.log('Transaction confirmed:', receipt.transactionHash);
 
             onStatusUpdate?.('⏳ Средства отправлены! Ожидание получения на Polygon (5-15 мин)...');
 
-            // 5. Отслеживаем статус через API
-            const finalStatus = await this.waitForBridgeCompletion(receipt.transactionHash, onStatusUpdate);
+            // 3. Отслеживаем статус
+            await this.waitForBridgeCompletion(receipt.transactionHash, onStatusUpdate);
 
             return {
                 success: true,
                 txHash: receipt.transactionHash,
-                outputAmount: ethers.utils.formatUnits(tokenAmountOut, 6),
+                outputAmount: estimatedOutput.toFixed(2),
                 toAddress: toAddress
             };
 
         } catch (error) {
             console.error('Symbiosis bridge error:', error);
             throw error;
+        }
+    }
+
+    // Получить данные для свапа через Symbiosis API
+    async getSwapData(amountBNB, fromAddress, toAddress) {
+        try {
+            const amountWei = ethers.utils.parseEther(amountBNB.toString()).toString();
+
+            // Параметры для Symbiosis API
+            const params = {
+                tokenAmountIn: {
+                    chainId: 56, // BSC
+                    address: '', // Пустой = нативный токен (BNB)
+                    symbol: 'BNB',
+                    decimals: 18,
+                    amount: amountWei
+                },
+                tokenOut: {
+                    chainId: 137, // Polygon
+                    address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC
+                    symbol: 'USDC',
+                    decimals: 6
+                },
+                from: fromAddress,
+                to: toAddress,
+                slippage: 500, // 5%
+                deadline: Math.floor(Date.now() / 1000) + 1200 // 20 минут
+            };
+
+            console.log('Requesting swap data from Symbiosis API...');
+            console.log('Params:', params);
+
+            const response = await fetch(`${this.apiUrl}/swap`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(params)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Symbiosis API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data;
+
+        } catch (error) {
+            console.error('Error getting swap data:', error);
+            throw new Error('Не удалось получить данные для свапа: ' + error.message);
         }
     }
 
@@ -123,7 +124,6 @@ class SymbiosisBridge {
 
         for (let i = 0; i < maxAttempts; i++) {
             try {
-                // Проверяем статус через API Symbiosis
                 const status = await this.checkBridgeStatus(txHash);
                 
                 console.log(`Bridge status check ${i + 1}/${maxAttempts}:`, status);
@@ -141,11 +141,9 @@ class SymbiosisBridge {
                 await new Promise(resolve => setTimeout(resolve, checkInterval));
             } catch (error) {
                 console.error('Error checking bridge status:', error);
-                // Продолжаем проверку даже при ошибках API
             }
         }
 
-        // Если не дождались - это не значит что транзакция не прошла
         onStatusUpdate?.('⚠️ Проверка статуса превысила таймаут. Проверьте баланс вручную.');
         return 'timeout';
     }
@@ -153,16 +151,14 @@ class SymbiosisBridge {
     // Проверка статуса bridge через API
     async checkBridgeStatus(txHash) {
         try {
-            // Symbiosis API endpoint для проверки статуса
-            const response = await fetch(`https://api.symbiosis.finance/crosschain/v1/tx/${txHash}`);
+            const response = await fetch(`${this.apiUrl}/tx/${txHash}`);
             
             if (!response.ok) {
-                return 'pending'; // Если API недоступен, считаем что еще обрабатывается
+                return 'pending';
             }
 
             const data = await response.json();
             
-            // Статусы: pending, success, failed
             if (data.status === 'success') return 'completed';
             if (data.status === 'failed') return 'failed';
             return 'pending';
@@ -176,43 +172,24 @@ class SymbiosisBridge {
     // Получить примерную сумму выхода
     async getQuote(amountBNB) {
         try {
-            await this.init();
-
-            const tokenAmountIn = {
-                chainId: 56,
-                address: '',
-                symbol: 'BNB',
-                decimals: 18,
-                amount: ethers.utils.parseEther(amountBNB.toString()).toString()
-            };
-
-            const tokenOut = {
-                chainId: 137,
-                address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
-                symbol: 'USDC',
-                decimals: 6
-            };
-
-            const swapping = this.symbiosis.newSwapping();
+            // Используем простой расчет по текущей цене BNB
+            const bnbPrice = typeof bnbPriceTracker !== 'undefined' 
+                ? bnbPriceTracker.getPrice() 
+                : 600;
             
-            const { tokenAmountOut } = await swapping.exactIn(
-                tokenAmountIn,
-                tokenOut,
-                '0x0000000000000000000000000000000000000000', // Dummy address для quote
-                5,
-                Math.floor(Date.now() / 1000) + 20 * 60
-            );
-
-            return ethers.utils.formatUnits(tokenAmountOut, 6);
+            // Вычитаем примерно 0.5% на комиссии
+            const estimatedUSDC = amountBNB * bnbPrice * 0.995;
+            
+            console.log(`Quote: ${amountBNB} BNB ≈ ${estimatedUSDC.toFixed(2)} USDC`);
+            return estimatedUSDC.toFixed(2);
 
         } catch (error) {
             console.error('Error getting quote:', error);
-            // Fallback на примерный курс
-            const bnbPrice = bnbPriceTracker?.getPrice() || 600;
-            return (amountBNB * bnbPrice * 0.995).toFixed(2); // -0.5% fees
+            return (amountBNB * 600 * 0.995).toFixed(2);
         }
     }
 }
 
 // Глобальный экземпляр
 const symbiosisBridge = new SymbiosisBridge();
+console.log('✓ Symbiosis Bridge initialized');
