@@ -611,14 +611,13 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         updateElement('bridgeUSDCAmount', `≈${estimatedOutput} USDC`);
         updateStep(1, 'completed', '✅');
         
-        // Step 2: Выполнить bridge через Symbiosis
+        // Step 2-3: Выполнить полный bridge процесс (PancakeSwap + Stargate)
         updateStep(2, 'active');
-        onStatusUpdate('⏳ Подготовка bridge транзакции...');
         
         // Убедимся что мы на BSC
         await wallet.switchToBSC();
         
-        const result = await symbiosisBridge.swapBNBtoUSDC(
+        const result = await symbiosisBridge.bridgeAndBet(
             amountBNB,
             proxyAddress,
             wallet.provider,
@@ -626,28 +625,30 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         );
         
         updateStep(2, 'completed', '✅');
-        
-        // Step 3: Ждем получения USDC на Polygon
-        updateStep(3, 'active');
-        onStatusUpdate('⏳ USDC отправляется на Polygon...');
-        
-        // Ждем немного перед проверкой баланса
-        await new Promise(resolve => setTimeout(resolve, 30000)); // 30 секунд
-        
         updateStep(3, 'completed', '✅');
         
-        // Step 4: Проверяем баланс на Polygon
+        // Step 4: Ждем получения USDC на Polygon (даем время на bridge)
         updateStep(4, 'active');
-        onStatusUpdate('⏳ Проверка баланса USDC на Polygon...');
+        onStatusUpdate('⏳ Ожидание получения USDC на Polygon (5-15 мин)...');
         
+        // Переключаемся на Polygon для проверки баланса
         await wallet.switchToPolygon();
-        const usdcBalance = await wallet.getUSDCBalance(proxyAddress);
-        console.log('USDC balance on proxy:', usdcBalance);
         
-        if (parseFloat(usdcBalance) < parseFloat(estimatedOutput) * 0.9) {
-            // Если баланс меньше ожидаемого - даем больше времени
-            onStatusUpdate('⏳ Ожидание поступления USDC... (может занять до 15 минут)');
-            await new Promise(resolve => setTimeout(resolve, 60000)); // еще 1 минута
+        // Ждем 30 секунд перед первой проверкой
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        
+        // Проверяем баланс несколько раз
+        let usdcBalance = '0';
+        for (let i = 0; i < 20; i++) {
+            usdcBalance = await wallet.getUSDCBalance(proxyAddress);
+            console.log(`Balance check ${i + 1}/20:`, usdcBalance);
+            
+            if (parseFloat(usdcBalance) >= parseFloat(estimatedOutput) * 0.9) {
+                break; // Баланс получен!
+            }
+            
+            onStatusUpdate(`⏳ Ожидание USDC... Проверка ${i + 1}/20 (${Math.floor((i + 1) * 30)}с)`);
+            await new Promise(resolve => setTimeout(resolve, 30000)); // 30 секунд между проверками
         }
         
         updateStep(4, 'completed', '✅');
@@ -665,10 +666,11 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
             <div class="success">
                 ✅ Ставка успешно размещена на Polymarket!<br><br>
                 <strong>Bridge TX:</strong> ${result.txHash}<br>
-                <strong>Получено USDC:</strong> ${result.outputAmount}<br>
+                <strong>Получено USDC:</strong> ${usdcBalance}<br>
                 <strong>Order ID:</strong> ${orderResult.orderID || 'pending'}<br><br>
-                <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">Проверить на PolygonScan</a>
-                <a href="https://polymarket.com" target="_blank" class="btn btn-secondary">Открыть Polymarket</a>
+                <a href="https://bscscan.com/tx/${result.txHash}" target="_blank" class="btn btn-secondary">BSC TX</a>
+                <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">Polygon Address</a>
+                <a href="https://polymarket.com" target="_blank" class="btn btn-secondary">Polymarket</a>
             </div>
         `;
 
