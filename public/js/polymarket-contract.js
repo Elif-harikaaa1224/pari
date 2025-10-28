@@ -125,24 +125,36 @@ class PolymarketContract {
     async fillOrder(orderData, signature, fillAmount) {
         try {
             console.log('📝 Filling order on-chain...');
-            console.log('Order:', orderData);
+            console.log('Order data received:', orderData);
+            console.log('Signature:', signature);
             console.log('Fill amount:', fillAmount);
+
+            if (!orderData) {
+                throw new Error('Order data is undefined or null');
+            }
 
             // Convert order data to contract format
             const order = {
-                salt: orderData.salt,
-                maker: orderData.maker,
-                signer: orderData.signer,
-                taker: orderData.taker,
-                tokenId: orderData.tokenId,
-                makerAmount: orderData.makerAmount,
-                takerAmount: orderData.takerAmount,
-                expiration: orderData.expiration,
-                nonce: orderData.nonce,
-                feeRateBps: orderData.feeRateBps,
-                side: orderData.side,
-                signatureType: orderData.signatureType
+                salt: orderData.salt || 0,
+                maker: orderData.maker || ethers.constants.AddressZero,
+                signer: orderData.signer || orderData.maker || ethers.constants.AddressZero,
+                taker: orderData.taker || ethers.constants.AddressZero,
+                tokenId: orderData.tokenId || orderData.token_id || '0',
+                makerAmount: orderData.makerAmount || orderData.maker_amount || '0',
+                takerAmount: orderData.takerAmount || orderData.taker_amount || '0',
+                expiration: orderData.expiration || 0,
+                nonce: orderData.nonce || 0,
+                feeRateBps: orderData.feeRateBps || orderData.fee_rate_bps || 0,
+                side: orderData.side === 'BUY' || orderData.side === 0 ? 0 : 1,
+                signatureType: orderData.signatureType || orderData.signature_type || 0
             };
+
+            console.log('Formatted order for contract:', order);
+
+            // Validate required fields
+            if (order.maker === ethers.constants.AddressZero) {
+                throw new Error('Invalid maker address in order');
+            }
 
             // Call fillOrder on contract
             console.log('🚀 Sending transaction...');
@@ -214,7 +226,30 @@ class PolymarketContract {
             }
 
             const bestOrder = orders[0];
-            console.log('Best order to fill:', bestOrder);
+            console.log('Best order from API:', bestOrder);
+            console.log('Order structure:', JSON.stringify(bestOrder, null, 2));
+
+            // Extract order data - API может возвращать разную структуру
+            let orderData, signature;
+            
+            if (bestOrder.order) {
+                // Структура: { order: {...}, signature: '...' }
+                orderData = bestOrder.order;
+                signature = bestOrder.signature;
+            } else if (bestOrder.salt) {
+                // Структура: сам ордер на верхнем уровне
+                orderData = bestOrder;
+                signature = bestOrder.signature || bestOrder.sig;
+            } else {
+                throw new Error('Unknown order structure from API');
+            }
+
+            console.log('Extracted order data:', orderData);
+            console.log('Extracted signature:', signature);
+
+            if (!orderData || !signature) {
+                throw new Error('Failed to extract order data or signature');
+            }
 
             // 3. Calculate fill amount
             const usdcAmountWei = ethers.utils.parseUnits(usdcAmount.toString(), 6);
@@ -224,8 +259,8 @@ class PolymarketContract {
 
             // 5. Fill the order
             const result = await this.fillOrder(
-                bestOrder.order,
-                bestOrder.signature,
+                orderData,
+                signature,
                 usdcAmountWei.toString()
             );
 
