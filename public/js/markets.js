@@ -4,6 +4,74 @@ let selectedMarket = null;
 let selectedToken = null;
 let config = null;
 
+// Auto-resume pending order after page reload (Rabby wallet switches networks)
+window.addEventListener('load', async () => {
+    // Wait for wallet to initialize
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    const pendingOrder = localStorage.getItem('pendingOrder');
+    if (pendingOrder) {
+        try {
+            const order = JSON.parse(pendingOrder);
+            
+            // Check if order is still valid (not older than 10 minutes)
+            const age = Date.now() - order.timestamp;
+            if (age > 10 * 60 * 1000) {
+                console.log('Pending order expired, clearing...');
+                localStorage.removeItem('pendingOrder');
+                return;
+            }
+            
+            // Check current network
+            if (window.ethereum) {
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                const currentChainId = parseInt(chainId, 16);
+                
+                console.log('🔄 Auto-resume: Current chainId:', currentChainId);
+                
+                if (currentChainId === 137) {
+                    // Already on Polygon - auto-complete order
+                    console.log('✅ On Polygon - auto-completing order...');
+                    
+                    // Small delay for UI to stabilize
+                    setTimeout(() => {
+                        autoCompleteOrder(order);
+                    }, 500);
+                } else {
+                    // Still on BSC - show reminder
+                    console.log('⏳ Still on BSC - waiting for manual switch to Polygon');
+                    showPolygonSwitchReminder(order);
+                }
+            }
+        } catch (error) {
+            console.error('Error processing pending order:', error);
+        }
+    }
+});
+
+// Listen for network changes to auto-complete order when user switches to Polygon
+if (window.ethereum) {
+    window.ethereum.on('chainChanged', async (chainIdHex) => {
+        const chainId = parseInt(chainIdHex, 16);
+        console.log('🔄 Network changed to:', chainId);
+        
+        const pendingOrder = localStorage.getItem('pendingOrder');
+        if (pendingOrder && chainId === 137) {
+            console.log('✅ Switched to Polygon - auto-completing order...');
+            
+            try {
+                const order = JSON.parse(pendingOrder);
+                // Small delay for network to stabilize
+                setTimeout(() => {
+                    autoCompleteOrder(order);
+                }, 1000);
+            } catch (error) {
+                console.error('Error auto-completing order:', error);
+            }
+        }
+    });
+}
+
 async function initMarkets() {
     const isConnected = await wallet.isConnected();
     
@@ -723,7 +791,7 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
             timestamp: Date.now()
         };
         
-        localStorage.setItem('pendingPolymarketOrder', JSON.stringify(pendingOrder));
+        localStorage.setItem('pendingOrder', JSON.stringify(pendingOrder));
         console.log('✓ Saved pending order to localStorage');
         
         updateStep(5, 'completed', '✅');
@@ -773,7 +841,7 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
 // Complete pending order from localStorage
 async function completePendingOrder() {
     try {
-        const pendingOrderData = localStorage.getItem('pendingPolymarketOrder');
+        const pendingOrderData = localStorage.getItem('pendingOrder');
         if (!pendingOrderData) {
             alert('Нет сохраненного ордера');
             return;
@@ -814,9 +882,33 @@ async function completePendingOrder() {
         modal.style.display = 'block';
         const statusDiv = modal.querySelector('.order-status');
         
-        // НЕ переключаем сеть! Подписываем напрямую через eth_signTypedData_v4
+        // Проверяем что мы на Polygon
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const network = await provider.getNetwork();
+        
+        if (network.chainId !== 137) {
+            statusDiv.innerHTML = `
+                <div class="info" style="background: #fff3cd; border: 2px solid #ffc107;">
+                    ⚠️ <strong>Переключите сеть на Polygon</strong><br><br>
+                    Текущая сеть: ${network.name || network.chainId}<br>
+                    Нужна сеть: <strong>Polygon (137)</strong><br><br>
+                    1. Переключите сеть в кошельке на Polygon<br>
+                    2. Нажмите эту кнопку снова<br><br>
+                    <button onclick="completePendingOrder()" class="btn btn-primary" style="padding: 10px 20px;">
+                        Попробовать снова
+                    </button>
+                </div>
+            `;
+            return;
+        }
+        
+        // Обновляем provider и signer для Polygon
+        wallet.provider = provider;
+        wallet.signer = provider.getSigner();
+        
         statusDiv.innerHTML = `
             <div class="info">
+                ✅ Сеть: Polygon<br><br>
                 ⏳ Создание и подпись ордера...<br><br>
                 <strong>Событие:</strong> ${order.marketQuestion}<br>
                 <strong>Исход:</strong> ${order.outcome}<br>
@@ -825,7 +917,7 @@ async function completePendingOrder() {
             </div>
         `;
         
-        // Размещаем ставку БЕЗ переключения сети
+        // Размещаем ставку (уже на Polygon)
         const orderResult = await placePolymarketOrder(
             parseFloat(order.usdcAmount),
             order.proxyAddress
@@ -834,7 +926,7 @@ async function completePendingOrder() {
         console.log('✓ Order placed:', orderResult);
         
         // Удаляем из localStorage
-        localStorage.removeItem('pendingPolymarketOrder');
+        localStorage.removeItem('pendingOrder');
         
         // Показываем успех
         statusDiv.innerHTML = `
@@ -973,6 +1065,160 @@ async function placePolymarketOrder(usdcAmount, makerAddress) {
     
     console.log('Order placement result:', result);
     return result;
+}
+
+// Auto-complete order when user is already on Polygon
+async function autoCompleteOrder(order) {
+    try {
+        console.log('🤖 Auto-completing order:', order);
+        
+        // Check if we're on Polygon
+        const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+        const currentChainId = parseInt(chainId, 16);
+        
+        if (currentChainId !== 137) {
+            console.log('❌ Not on Polygon, cannot auto-complete');
+            showPolygonSwitchReminder(order);
+            return;
+        }
+        
+        // Show auto-completion modal
+        let modal = document.getElementById('orderPlacementModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'orderPlacementModal';
+            modal.className = 'modal';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="closeOrderModal()">&times;</span>
+                    <h2>🤖 Автоматическое размещение ставки</h2>
+                    <div class="order-status"></div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        modal.style.display = 'block';
+        const statusDiv = modal.querySelector('.order-status');
+        
+        statusDiv.innerHTML = `
+            <div class="info">
+                ✅ Сеть: Polygon<br><br>
+                ⏳ Автоматическое размещение ставки...<br><br>
+                <strong>Событие:</strong> ${order.marketQuestion}<br>
+                <strong>Исход:</strong> ${order.outcome}<br>
+                <strong>Сумма:</strong> ${order.usdcAmount} USDC<br><br>
+                <small>Подпишите в кошельке...</small>
+            </div>
+        `;
+        
+        // Restore market context
+        selectedToken = {
+            id: order.tokenId,
+            outcome: order.outcome,
+            price: order.price
+        };
+        
+        selectedMarket = {
+            slug: order.marketSlug,
+            question: order.marketQuestion
+        };
+        
+        // Initialize wallet if needed
+        if (!wallet.provider) {
+            await wallet.connect();
+        }
+        
+        // Place order
+        const orderResult = await placePolymarketOrder(
+            parseFloat(order.usdcAmount),
+            order.proxyAddress
+        );
+        
+        console.log('✅ Order placed:', orderResult);
+        
+        // Clear pending order
+        localStorage.removeItem('pendingOrder');
+        
+        statusDiv.innerHTML = `
+            <div class="success">
+                ✅ <strong>Ставка успешно размещена!</strong><br><br>
+                <strong>Order ID:</strong> ${orderResult.orderID}<br><br>
+                <a href="https://polymarket.com/event/${order.marketSlug}" target="_blank" class="btn btn-primary">
+                    📊 Посмотреть на Polymarket
+                </a>
+                <br><br>
+                <button onclick="closeOrderModal(); window.location.reload();" class="btn btn-secondary">
+                    Закрыть
+                </button>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('❌ Auto-complete failed:', error);
+        
+        const modal = document.getElementById('orderPlacementModal');
+        if (modal) {
+            const statusDiv = modal.querySelector('.order-status');
+            statusDiv.innerHTML = `
+                <div class="error">
+                    ❌ <strong>Ошибка:</strong><br>
+                    ${error.message}<br><br>
+                    <button onclick="closeOrderModal()" class="btn btn-secondary">Закрыть</button>
+                </div>
+            `;
+        }
+    }
+}
+
+// Show reminder to switch to Polygon
+function showPolygonSwitchReminder(order) {
+    let modal = document.getElementById('orderPlacementModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'orderPlacementModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close" onclick="closeOrderModal()">&times;</span>
+                <h2>⏳ Завершение ставки</h2>
+                <div class="order-status"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    modal.style.display = 'block';
+    const statusDiv = modal.querySelector('.order-status');
+    
+    statusDiv.innerHTML = `
+        <div class="info" style="background: #fff3cd; border: 2px solid #ffc107; padding: 20px;">
+            ⚠️ <strong>Переключите сеть на Polygon</strong><br><br>
+            
+            <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                <strong>📝 Информация о ставке:</strong><br>
+                <strong>Событие:</strong> ${order.marketQuestion}<br>
+                <strong>Исход:</strong> ${order.outcome}<br>
+                <strong>Сумма:</strong> ${order.usdcAmount} USDC<br>
+            </div>
+            
+            <strong>Инструкция для Rabby Wallet:</strong><br><br>
+            
+            <ol style="text-align: left; margin-left: 20px;">
+                <li>Откройте кошелек Rabby</li>
+                <li>Нажмите на текущую сеть (сверху)</li>
+                <li>Выберите <strong>Polygon</strong></li>
+                <li>Страница автоматически перезагрузится</li>
+                <li>Ставка разместится автоматически!</li>
+            </ol>
+            
+            <br>
+            <div style="background: #e7f3ff; padding: 10px; border-radius: 5px;">
+                💡 <strong>Совет:</strong> После переключения сети страница перезагрузится - это нормально!<br>
+                Ставка автоматически продолжится на Polygon.
+            </div>
+        </div>
+    `;
 }
 
 function showError(message) {
