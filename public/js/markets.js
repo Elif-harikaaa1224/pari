@@ -706,6 +706,10 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         console.log('Selected token:', selectedToken);
         console.log('USDC balance:', usdcBalance);
         console.log('Proxy address:', proxyAddress);
+        console.log('Original BNB amount:', amountBNB);
+        
+        // Вычисляем примерную сумму USDC для ставки (BNB amount * BNB price * 0.98 slippage)
+        const estimatedUSDC = parseFloat(estimatedOutput) || parseFloat(usdcBalance);
         
         // Сохраняем данные для ручного размещения
         const pendingOrder = {
@@ -714,7 +718,7 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
             tokenId: selectedToken.id,
             outcome: selectedToken.outcome,
             price: selectedToken.price,
-            usdcBalance: usdcBalance,
+            usdcAmount: estimatedUSDC.toFixed(2), // Используем расчетную сумму, а не весь баланс
             proxyAddress: proxyAddress,
             timestamp: Date.now()
         };
@@ -729,6 +733,7 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
             <div class="success">
                 ✅ <strong>Bridge успешно завершен!</strong><br><br>
                 <strong>USDC получен:</strong> ${usdcBalance}<br>
+                <strong>Сумма для ставки:</strong> ${estimatedUSDC.toFixed(2)} USDC<br>
                 <strong>Адрес:</strong> ${proxyAddress}<br><br>
                 <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br><br>
                 
@@ -811,17 +816,51 @@ async function completePendingOrder() {
         
         statusDiv.innerHTML = `
             <div class="info">
+                ⏳ Переключение на Polygon...<br><br>
+                <strong>Событие:</strong> ${order.marketQuestion}<br>
+                <strong>Исход:</strong> ${order.outcome}<br>
+                <strong>Сумма:</strong> ${order.usdcAmount} USDC<br><br>
+                <small>Подтвердите переключение сети в кошельке...</small>
+            </div>
+        `;
+        
+        // Переключаемся на Polygon для подписи
+        try {
+            await wallet.switchToPolygon();
+            console.log('Switched to Polygon');
+            
+            // Даем время на стабилизацию
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Обновляем провайдер
+            wallet.provider = new ethers.providers.Web3Provider(window.ethereum);
+            wallet.signer = wallet.provider.getSigner();
+            
+        } catch (switchError) {
+            console.error('Network switch error:', switchError);
+            statusDiv.innerHTML = `
+                <div class="error">
+                    ❌ Не удалось переключить сеть на Polygon<br><br>
+                    Переключите вручную на Polygon и нажмите кнопку снова.
+                </div>
+            `;
+            return;
+        }
+        
+        // Обновляем статус
+        statusDiv.innerHTML = `
+            <div class="info">
                 ⏳ Создание и подпись ордера...<br><br>
                 <strong>Событие:</strong> ${order.marketQuestion}<br>
                 <strong>Исход:</strong> ${order.outcome}<br>
-                <strong>Сумма:</strong> ${order.usdcBalance} USDC<br><br>
+                <strong>Сумма:</strong> ${order.usdcAmount} USDC<br><br>
                 <small>Подпишите в кошельке...</small>
             </div>
         `;
         
         // Размещаем ставку
         const orderResult = await placePolymarketOrder(
-            parseFloat(order.usdcBalance),
+            parseFloat(order.usdcAmount),
             order.proxyAddress
         );
         
@@ -836,7 +875,7 @@ async function completePendingOrder() {
                 ✅ <strong>Ставка успешно размещена!</strong><br><br>
                 <strong>Событие:</strong> ${order.marketQuestion}<br>
                 <strong>Исход:</strong> ${order.outcome}<br>
-                <strong>Сумма:</strong> ${order.usdcBalance} USDC<br><br>
+                <strong>Сумма:</strong> ${order.usdcAmount} USDC<br><br>
                 ${orderResult.orderID ? `<strong>Order ID:</strong> ${orderResult.orderID}<br><br>` : ''}
                 <a href="https://polymarket.com/event/${order.marketSlug}" target="_blank" class="btn btn-primary">📊 View on Polymarket</a>
             </div>
