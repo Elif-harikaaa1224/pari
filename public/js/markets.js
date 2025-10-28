@@ -907,6 +907,13 @@ async function approveUSDCForBetting(proxyAddress, amount) {
 }
 
 async function placePolymarketOrder(usdcAmount, makerAddress) {
+    console.log('=== Placing Polymarket Order ===');
+    console.log('Selected market:', selectedMarket);
+    console.log('Selected token:', selectedToken);
+    console.log('Token ID:', selectedToken.id);
+    console.log('Maker address:', makerAddress);
+    console.log('USDC amount:', usdcAmount);
+    
     const result = await polymarketOrderSigner.placeOrder({
         tokenId: selectedToken.id,
         makerAddress: makerAddress,
@@ -915,6 +922,7 @@ async function placePolymarketOrder(usdcAmount, makerAddress) {
         signer: wallet.signer
     });
     
+    console.log('Order placement result:', result);
     return result;
 }
 
