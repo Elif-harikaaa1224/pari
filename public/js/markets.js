@@ -4,45 +4,7 @@ let selectedMarket = null;
 let selectedToken = null;
 let config = null;
 
-// Setup network change listener
-function setupNetworkListener() {
-    if (!window.ethereum) return;
-    
-    console.log('Setting up network change listener...');
-    
-    window.ethereum.on('chainChanged', async (chainIdHex) => {
-        const chainId = parseInt(chainIdHex, 16);
-        console.log('Network changed to chainId:', chainId);
-        
-        // Удаляем уведомление о переключении если есть
-        const notification = document.getElementById('pendingBetNotification');
-        if (notification) {
-            notification.remove();
-        }
-        
-        // НЕ перезагружаем страницу! Проверяем pending bet
-        const pendingBetData = localStorage.getItem('pendingPolymarketBet');
-        
-        if (pendingBetData && chainId === 137) {
-            console.log('✓ Switched to Polygon with pending bet - processing...');
-            
-            // Небольшая задержка для стабилизации провайдера
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Обрабатываем ставку
-            await processPendingBet();
-        } else if (pendingBetData && chainId !== 137) {
-            console.log('Pending bet exists but not on Polygon yet, chainId:', chainId);
-        } else {
-            console.log('No pending bet or wrong network');
-        }
-    });
-}
-
 async function initMarkets() {
-    // Устанавливаем listener для смены сети ПЕРВЫМ делом
-    setupNetworkListener();
-    
     const isConnected = await wallet.isConnected();
     
     if (isConnected) {
@@ -56,9 +18,6 @@ async function initMarkets() {
         // Load balance and check proxy
         await updateBalance();
         await checkAndDisplayProxy();
-        
-        // Проверяем есть ли незавершенная ставка после переключения сети
-        await checkPendingBet();
     } else {
         // Show connect wallet button
         document.getElementById('walletDisplay').innerHTML = 
@@ -71,160 +30,6 @@ async function initMarkets() {
 
     // Setup modal
     setupModal();
-}
-
-async function processPendingBet() {
-    try {
-        const pendingBetData = localStorage.getItem('pendingPolymarketBet');
-        if (!pendingBetData) {
-            console.log('No pending bet found');
-            return;
-        }
-        
-        const pendingBet = JSON.parse(pendingBetData);
-        console.log('Processing pending bet:', pendingBet);
-        
-        // Проверяем что это свежая ставка (не старше 10 минут)
-        const age = Date.now() - pendingBet.timestamp;
-        if (age > 10 * 60 * 1000) {
-            console.log('Pending bet too old, removing');
-            localStorage.removeItem('pendingPolymarketBet');
-            return;
-        }
-        
-        // Удаляем из localStorage чтобы не повторялось
-        localStorage.removeItem('pendingPolymarketBet');
-        
-        // Восстанавливаем selectedToken и selectedMarket для placePolymarketOrder
-        selectedToken = {
-            id: pendingBet.tokenId,
-            outcome: pendingBet.outcome,
-            price: pendingBet.price
-        };
-        
-        selectedMarket = {
-            slug: pendingBet.marketSlug,
-            question: pendingBet.marketQuestion
-        };
-        
-        // Показываем модал с процессом
-        const modal = document.getElementById('betModal');
-        const modalContent = document.querySelector('.modal-content');
-        
-        modal.style.display = 'block';
-        modalContent.innerHTML = `
-            <span class="close" onclick="closeBridgeModal()">&times;</span>
-            <h2>Размещение ставки</h2>
-            <div class="bridge-status">
-                <div class="info">
-                    ⏳ Создание и подпись ордера для Polymarket...<br><br>
-                    <strong>Событие:</strong> ${pendingBet.marketQuestion}<br>
-                    <strong>Исход:</strong> ${pendingBet.outcome}<br>
-                    <strong>Сумма:</strong> ${pendingBet.usdcBalance} USDC
-                </div>
-            </div>
-        `;
-        
-        // Размещаем ставку
-        try {
-            console.log('Placing order with:', {
-                tokenId: pendingBet.tokenId,
-                proxyAddress: pendingBet.proxyAddress,
-                amount: pendingBet.usdcBalance
-            });
-            
-            const orderResult = await placePolymarketOrder(
-                parseFloat(pendingBet.usdcBalance),
-                pendingBet.proxyAddress
-            );
-            
-            console.log('✓ Order placed successfully:', orderResult);
-            
-            // Показываем успех
-            const status = document.querySelector('.bridge-status');
-            status.innerHTML = `
-                <div class="success">
-                    ✅ <strong>Ставка успешно размещена!</strong><br><br>
-                    <strong>Событие:</strong> ${pendingBet.marketQuestion}<br>
-                    <strong>Исход:</strong> ${pendingBet.outcome}<br>
-                    <strong>Цена:</strong> $${pendingBet.price}<br>
-                    <strong>Сумма:</strong> ${pendingBet.usdcBalance} USDC<br><br>
-                    ${orderResult.orderId ? `<strong>Order ID:</strong> ${orderResult.orderId}<br>` : ''}
-                    <a href="https://polymarket.com/event/${pendingBet.marketSlug}" target="_blank" class="btn btn-primary">📊 View on Polymarket</a>
-                </div>
-            `;
-            
-            // Обновляем баланс
-            await updateBalance();
-            
-        } catch (error) {
-            console.error('Error placing order:', error);
-            
-            const status = document.querySelector('.bridge-status');
-            status.innerHTML = `
-                <div class="error">
-                    ❌ <strong>Ошибка размещения ставки</strong><br><br>
-                    ${error.message}<br><br>
-                    <strong>USDC на адресе:</strong> ${pendingBet.proxyAddress}<br>
-                    <a href="https://polygonscan.com/address/${pendingBet.proxyAddress}" target="_blank" class="btn btn-secondary">📊 Polygon Address</a>
-                </div>
-            `;
-        }
-        
-    } catch (error) {
-        console.error('Error processing pending bet:', error);
-    }
-}
-
-async function checkPendingBet() {
-    try {
-        const pendingBetData = localStorage.getItem('pendingPolymarketBet');
-        if (!pendingBetData) return;
-        
-        const pendingBet = JSON.parse(pendingBetData);
-        console.log('Found pending bet:', pendingBet);
-        
-        // Проверяем что это свежая ставка (не старше 10 минут)
-        const age = Date.now() - pendingBet.timestamp;
-        if (age > 10 * 60 * 1000) {
-            console.log('Pending bet too old, removing');
-            localStorage.removeItem('pendingPolymarketBet');
-            return;
-        }
-        
-        // Проверяем что мы на Polygon
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const network = await provider.getNetwork();
-        
-        if (network.chainId !== 137) {
-            console.log('Not on Polygon yet, switching now...');
-            
-            // Показываем уведомление что переключаемся на Polygon
-            const notification = document.createElement('div');
-            notification.id = 'pendingBetNotification';
-            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);';
-            notification.innerHTML = '⏳ Обнаружена незавершенная ставка. Переключение на Polygon...';
-            document.body.appendChild(notification);
-            
-            try {
-                await wallet.switchToPolygon();
-                console.log('Polygon switch requested - chainChanged listener will handle bet placement');
-            } catch (error) {
-                console.error('Failed to switch to Polygon:', error);
-                notification.innerHTML = '⚠️ Переключите сеть на Polygon вручную для завершения ставки';
-                notification.style.background = '#ff9800';
-            }
-            
-            return;
-        }
-        
-        // Если уже на Polygon - сразу обрабатываем
-        console.log('✓ Already on Polygon! Processing bet...');
-        await processPendingBet();
-        
-    } catch (error) {
-        console.error('Error checking pending bet:', error);
-    }
 }
 
 async function checkAndDisplayProxy() {
@@ -902,62 +707,46 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         console.log('USDC balance:', usdcBalance);
         console.log('Proxy address:', proxyAddress);
         
-        // Сохраняем состояние перед переключением сети (страница может перезагрузиться)
-        const pendingBet = {
-            marketSlug: selectedMarket.slug,
-            marketQuestion: selectedMarket.question,
-            tokenId: selectedToken.id,
-            outcome: selectedToken.outcome,
-            price: selectedToken.price,
-            usdcBalance: usdcBalance,
-            proxyAddress: proxyAddress,
-            timestamp: Date.now()
-        };
+        // НЕ переключаем сеть! Размещаем ставку напрямую через подпись
+        onStatusUpdate('⏳ Создание и подпись ордера для Polymarket...');
         
-        console.log('Saving pending bet to localStorage:', pendingBet);
-        localStorage.setItem('pendingPolymarketBet', JSON.stringify(pendingBet));
-        
-        // Показываем промежуточное сообщение
+        // Показываем процесс
         status.innerHTML = `
             <div class="info">
                 ✅ USDC получен: ${usdcBalance}<br><br>
-                ⏳ Переключите сеть на <strong>Polygon</strong> в кошельке для размещения ставки...<br><br>
-                <small>Ожидание переключения сети...</small>
+                ⏳ Создание ордера на Polymarket...<br><br>
+                <small>Подпишите транзакцию в кошельке...</small>
             </div>
         `;
         
-        // Запрашиваем переключение на Polygon
+        // Размещаем ставку (placePolymarketOrder использует EIP-712 подпись, не требует смены сети)
+        let orderResult;
         try {
-            console.log('Requesting Polygon network switch...');
-            await wallet.switchToPolygon();
-            console.log('Switch request sent - page will reload');
-            
-            // Показываем финальное сообщение
-            status.innerHTML = `
-                <div class="info">
-                    ✅ <strong>Bridge успешно завершен!</strong><br><br>
-                    <strong>USDC получен:</strong> ${usdcBalance}<br>
-                    <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br><br>
-                    ⏳ Переключение на Polygon для размещения ставки...<br><br>
-                    <small>После переключения сети страница перезагрузится и ставка разместится автоматически.</small>
-                </div>
-            `;
-            
-        } catch (switchError) {
-            console.log('Switch error:', switchError);
-            
-            status.innerHTML = `
-                <div class="info">
-                    ✅ <strong>Bridge успешно завершен!</strong><br><br>
-                    <strong>USDC получен:</strong> ${usdcBalance}<br>
-                    <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br><br>
-                    ⚠️ <strong>Переключите сеть на Polygon вручную</strong><br><br>
-                    После переключения страница перезагрузится и ставка разместится автоматически.<br><br>
-                    <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">📊 Polygon Address</a>
-                </div>
-            `;
+            orderResult = await placePolymarketOrder(parseFloat(usdcBalance), proxyAddress);
+            console.log('Order result:', orderResult);
+        } catch (orderError) {
+            console.error('Order placement error:', orderError);
+            throw new Error('Ошибка размещения ставки: ' + orderError.message);
         }
-
+        
+        updateStep(5, 'completed', '✅');
+        
+        // Success!
+        status.innerHTML = `
+            <div class="success">
+                ✅ <strong>Ставка успешно размещена на Polymarket!</strong><br><br>
+                <strong>Событие:</strong> ${selectedMarket.question}<br>
+                <strong>Исход:</strong> ${selectedToken.outcome}<br>
+                <strong>Сумма:</strong> ${usdcBalance} USDC<br><br>
+                <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br>
+                ${orderResult.orderID ? `<strong>Order ID:</strong> ${orderResult.orderID}<br>` : ''}
+                <br>
+                <a href="https://layerzeroscan.com/tx/${result.txHash}" target="_blank" class="btn btn-primary">🔍 LayerZero</a>
+                <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">📊 Polygon</a>
+                <a href="https://polymarket.com/event/${selectedMarket.slug}" target="_blank" class="btn btn-primary">📊 View on Polymarket</a>
+            </div>
+        `;
+        
         // Обновить баланс
         setTimeout(updateBalance, 2000);
 
