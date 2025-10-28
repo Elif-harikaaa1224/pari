@@ -789,32 +789,33 @@ async function completePendingOrder() {
             question: order.marketQuestion
         };
         
-        // Показываем процесс
-        const modal = document.getElementById('betModal');
+        // Создаем НОВОЕ модальное окно для размещения ставки
+        let modal = document.getElementById('orderPlacementModal');
         if (!modal) {
-            alert('Модальное окно не найдено. Перезагрузите страницу.');
-            return;
-        }
-        
-        const modalContent = modal.querySelector('.modal-content');
-        if (!modalContent) {
-            alert('Контент модального окна не найден. Перезагрузите страницу.');
-            return;
+            // Создаем модал если его нет
+            modal = document.createElement('div');
+            modal.id = 'orderPlacementModal';
+            modal.className = 'modal';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="closeOrderModal()">&times;</span>
+                    <h2>Размещение ставки</h2>
+                    <div class="order-status"></div>
+                </div>
+            `;
+            document.body.appendChild(modal);
         }
         
         modal.style.display = 'block';
+        const statusDiv = modal.querySelector('.order-status');
         
-        modalContent.innerHTML = `
-            <span class="close" onclick="closeBridgeModal()">&times;</span>
-            <h2>Размещение ставки</h2>
-            <div class="bridge-status">
-                <div class="info">
-                    ⏳ Создание и подпись ордера...<br><br>
-                    <strong>Событие:</strong> ${order.marketQuestion}<br>
-                    <strong>Исход:</strong> ${order.outcome}<br>
-                    <strong>Сумма:</strong> ${order.usdcBalance} USDC<br><br>
-                    <small>Подпишите в кошельке...</small>
-                </div>
+        statusDiv.innerHTML = `
+            <div class="info">
+                ⏳ Создание и подпись ордера...<br><br>
+                <strong>Событие:</strong> ${order.marketQuestion}<br>
+                <strong>Исход:</strong> ${order.outcome}<br>
+                <strong>Сумма:</strong> ${order.usdcBalance} USDC<br><br>
+                <small>Подпишите в кошельке...</small>
             </div>
         `;
         
@@ -830,8 +831,7 @@ async function completePendingOrder() {
         localStorage.removeItem('pendingPolymarketOrder');
         
         // Показываем успех
-        const status = modalContent.querySelector('.bridge-status');
-        status.innerHTML = `
+        statusDiv.innerHTML = `
             <div class="success">
                 ✅ <strong>Ставка успешно размещена!</strong><br><br>
                 <strong>Событие:</strong> ${order.marketQuestion}<br>
@@ -848,6 +848,13 @@ async function completePendingOrder() {
     } catch (error) {
         console.error('Error completing order:', error);
         alert('Ошибка: ' + error.message);
+    }
+}
+
+function closeOrderModal() {
+    const modal = document.getElementById('orderPlacementModal');
+    if (modal) {
+        modal.style.display = 'none';
     }
 }
 
