@@ -248,11 +248,7 @@ class PolymarketOrderSigner {
                 },
                 owner: ownerAddress,
                 orderType: 'FOK', // Fill or Kill
-                signature: signature,
-                // Add API credentials
-                apiKey: this.apiKey,
-                apiSecret: this.apiSecret,
-                apiPassphrase: this.apiPassphrase
+                signature: signature
             };
 
             console.log('Order payload:', payload);
@@ -297,9 +293,8 @@ class PolymarketOrderSigner {
         try {
             const ownerAddr = ownerAddress || makerAddress;
             
-            // 0. Get API credentials first
-            console.log('Getting API credentials for:', ownerAddr);
-            await this.getApiCredentials(ownerAddr);
+            // Skip API credentials - try without them
+            console.log('Placing order without API credentials (public order)...');
             
             // 1. Create order data
             const { order, price, outcomeTokens } = await this.createOrderData({

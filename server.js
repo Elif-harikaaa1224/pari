@@ -56,46 +56,57 @@ app.post('/api/derive-api-key', async (req, res) => {
 // Proxy endpoint для размещения ставок в Polymarket
 app.post('/api/place-order', async (req, res) => {
     try {
-        const { order, signature, owner, apiKey, apiSecret, apiPassphrase } = req.body;
+        const { order, signature, owner } = req.body;
         
-        console.log('📤 Placing order in Polymarket via SDK:');
+        console.log('📤 Placing order in Polymarket CLOB:');
         console.log('  Owner:', owner);
         console.log('  Maker:', order.maker);
         console.log('  Token ID:', order.tokenId);
         console.log('  Side:', order.side);
         
-        // Create CLOB client with user's credentials
-        const clobClient = new ClobClient(
-            'https://clob.polymarket.com',
-            137, // Polygon chainId
+        // Prepare order payload for Polymarket CLOB
+        const payload = {
+            orderType: 'FOK',
+            signature: signature,
+            owner: owner,
+            ...order
+        };
+        
+        console.log('Sending to Polymarket CLOB API...');
+        
+        // Send directly to Polymarket CLOB API
+        const response = await axios.post(
+            'https://clob.polymarket.com/order',
+            payload,
             {
-                key: apiKey,
-                secret: apiSecret,
-                passphrase: apiPassphrase
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                timeout: 30000
             }
         );
         
-        // Post signed order
-        const result = await clobClient.postOrder({
-            ...order,
-            signature: signature,
-            owner: owner
-        });
-        
         console.log('✅ Order placed successfully!');
-        console.log('  Result:', result);
+        console.log('  Result:', response.data);
         
-        res.json(result);
+        res.json(response.data);
         
     } catch (error) {
         console.error('❌ Error placing order:');
-        console.error('  Error:', error.message);
-        console.error('  Details:', error.response?.data || error);
         
-        res.status(error.response?.status || 500).json({
-            error: error.message,
-            details: error.response?.data || error.toString()
-        });
+        if (error.response) {
+            console.error('  Status:', error.response.status);
+            console.error('  Data:', error.response.data);
+            res.status(error.response.status).json({
+                error: error.response.data.error || error.response.data.message || 'Polymarket API error',
+                details: error.response.data
+            });
+        } else {
+            console.error('  Error:', error.message);
+            res.status(500).json({
+                error: error.message
+            });
+        }
     }
 });
 
