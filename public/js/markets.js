@@ -714,12 +714,64 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         status.innerHTML = `
             <div class="info">
                 ✅ USDC получен: ${usdcBalance}<br><br>
-                ⏳ Создание ордера на Polymarket...<br><br>
-                <small>Подпишите транзакцию в кошельке...</small>
+                ⏳ Переключение на Polygon для подписи...<br><br>
+                <small>Подтвердите переключение сети в кошельке...</small>
             </div>
         `;
         
-        // Размещаем ставку (placePolymarketOrder использует EIP-712 подпись, не требует смены сети)
+        // Переключаемся на Polygon для подписи
+        try {
+            await wallet.switchToPolygon();
+            console.log('Switched to Polygon for signing');
+            
+            // Небольшая задержка для стабилизации
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+        } catch (switchError) {
+            console.error('Failed to switch to Polygon:', switchError);
+            throw new Error('Не удалось переключиться на Polygon для подписи');
+        }
+        
+        // Обновляем provider после переключения
+        wallet.provider = new ethers.providers.Web3Provider(window.ethereum);
+        wallet.signer = wallet.provider.getSigner();
+        
+        status.innerHTML = `
+            <div class="info">
+                ✅ USDC получен: ${usdcBalance}<br><br>
+                ⏳ Переключение на Polygon для подписи ордера...<br><br>
+                <small>Подтвердите переключение сети в кошельке...</small>
+            </div>
+        `;
+        
+        // Переключаемся на Polygon для подписи EIP-712
+        try {
+            console.log('Switching to Polygon for order signing...');
+            await wallet.switchToPolygon();
+            
+            // Небольшая пауза для стабилизации
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Обновляем provider и signer после переключения
+            wallet.provider = new ethers.providers.Web3Provider(window.ethereum);
+            wallet.signer = wallet.provider.getSigner();
+            
+            console.log('Switched to Polygon successfully');
+        } catch (switchError) {
+            console.error('Network switch error:', switchError);
+            throw new Error('Не удалось переключиться на Polygon: ' + switchError.message);
+        }
+        
+        // Обновляем статус
+        status.innerHTML = `
+            <div class="info">
+                ✅ USDC получен: ${usdcBalance}<br><br>
+                ⏳ Создание ордера на Polymarket...<br><br>
+                <small>Подпишите ордер в кошельке...</small>
+            </div>
+        `;
+        
+        // Размещаем ставку (теперь на Polygon)
         let orderResult;
         try {
             orderResult = await placePolymarketOrder(parseFloat(usdcBalance), proxyAddress);
