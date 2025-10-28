@@ -791,7 +791,17 @@ async function completePendingOrder() {
         
         // Показываем процесс
         const modal = document.getElementById('betModal');
-        const modalContent = document.querySelector('.modal-content');
+        if (!modal) {
+            alert('Модальное окно не найдено. Перезагрузите страницу.');
+            return;
+        }
+        
+        const modalContent = modal.querySelector('.modal-content');
+        if (!modalContent) {
+            alert('Контент модального окна не найден. Перезагрузите страницу.');
+            return;
+        }
+        
         modal.style.display = 'block';
         
         modalContent.innerHTML = `
