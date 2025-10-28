@@ -558,12 +558,25 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
     const bnbPrice = bnbPriceTracker.getPrice();
     const usdcAmount = amountBNB * bnbPrice;
 
-    document.getElementById('bridgeBNBAmount').textContent = `${amountBNB} BNB`;
-    document.getElementById('bridgeUSDCAmount').textContent = `≈${usdcAmount.toFixed(2)} USDC`;
-    document.getElementById('modalProxyAddress').textContent = proxyAddress;
-    document.getElementById('bridgeToAddress').textContent = `${proxyAddress.slice(0, 10)}...${proxyAddress.slice(-8)}`;
+    // Безопасное обновление элементов
+    const updateElement = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
+        } else {
+            console.warn(`Element with id "${id}" not found`);
+        }
+    };
+
+    updateElement('bridgeBNBAmount', `${amountBNB} BNB`);
+    updateElement('bridgeUSDCAmount', `≈${usdcAmount.toFixed(2)} USDC`);
+    updateElement('bridgeToAddress', `${proxyAddress.slice(0, 10)}...${proxyAddress.slice(-8)}`);
 
     const status = document.getElementById('bridgeStatus');
+    if (!status) {
+        console.error('Bridge status element not found!');
+        return;
+    }
 
     try {
         // Step 1: Switch to BSC and swap BNB→USDT
