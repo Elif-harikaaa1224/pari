@@ -814,40 +814,7 @@ async function completePendingOrder() {
         modal.style.display = 'block';
         const statusDiv = modal.querySelector('.order-status');
         
-        statusDiv.innerHTML = `
-            <div class="info">
-                ⏳ Переключение на Polygon...<br><br>
-                <strong>Событие:</strong> ${order.marketQuestion}<br>
-                <strong>Исход:</strong> ${order.outcome}<br>
-                <strong>Сумма:</strong> ${order.usdcAmount} USDC<br><br>
-                <small>Подтвердите переключение сети в кошельке...</small>
-            </div>
-        `;
-        
-        // Переключаемся на Polygon для подписи
-        try {
-            await wallet.switchToPolygon();
-            console.log('Switched to Polygon');
-            
-            // Даем время на стабилизацию
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // Обновляем провайдер
-            wallet.provider = new ethers.providers.Web3Provider(window.ethereum);
-            wallet.signer = wallet.provider.getSigner();
-            
-        } catch (switchError) {
-            console.error('Network switch error:', switchError);
-            statusDiv.innerHTML = `
-                <div class="error">
-                    ❌ Не удалось переключить сеть на Polygon<br><br>
-                    Переключите вручную на Polygon и нажмите кнопку снова.
-                </div>
-            `;
-            return;
-        }
-        
-        // Обновляем статус
+        // НЕ переключаем сеть! Подписываем напрямую через eth_signTypedData_v4
         statusDiv.innerHTML = `
             <div class="info">
                 ⏳ Создание и подпись ордера...<br><br>
@@ -858,7 +825,7 @@ async function completePendingOrder() {
             </div>
         `;
         
-        // Размещаем ставку
+        // Размещаем ставку БЕЗ переключения сети
         const orderResult = await placePolymarketOrder(
             parseFloat(order.usdcAmount),
             order.proxyAddress
