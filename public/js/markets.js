@@ -4,7 +4,45 @@ let selectedMarket = null;
 let selectedToken = null;
 let config = null;
 
+// Setup network change listener
+function setupNetworkListener() {
+    if (!window.ethereum) return;
+    
+    console.log('Setting up network change listener...');
+    
+    window.ethereum.on('chainChanged', async (chainIdHex) => {
+        const chainId = parseInt(chainIdHex, 16);
+        console.log('Network changed to chainId:', chainId);
+        
+        // Удаляем уведомление о переключении если есть
+        const notification = document.getElementById('pendingBetNotification');
+        if (notification) {
+            notification.remove();
+        }
+        
+        // НЕ перезагружаем страницу! Проверяем pending bet
+        const pendingBetData = localStorage.getItem('pendingPolymarketBet');
+        
+        if (pendingBetData && chainId === 137) {
+            console.log('✓ Switched to Polygon with pending bet - processing...');
+            
+            // Небольшая задержка для стабилизации провайдера
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Обрабатываем ставку
+            await processPendingBet();
+        } else if (pendingBetData && chainId !== 137) {
+            console.log('Pending bet exists but not on Polygon yet, chainId:', chainId);
+        } else {
+            console.log('No pending bet or wrong network');
+        }
+    });
+}
+
 async function initMarkets() {
+    // Устанавливаем listener для смены сети ПЕРВЫМ делом
+    setupNetworkListener();
+    
     const isConnected = await wallet.isConnected();
     
     if (isConnected) {
@@ -35,13 +73,16 @@ async function initMarkets() {
     setupModal();
 }
 
-async function checkPendingBet() {
+async function processPendingBet() {
     try {
         const pendingBetData = localStorage.getItem('pendingPolymarketBet');
-        if (!pendingBetData) return;
+        if (!pendingBetData) {
+            console.log('No pending bet found');
+            return;
+        }
         
         const pendingBet = JSON.parse(pendingBetData);
-        console.log('Found pending bet:', pendingBet);
+        console.log('Processing pending bet:', pendingBet);
         
         // Проверяем что это свежая ставка (не старше 10 минут)
         const age = Date.now() - pendingBet.timestamp;
@@ -50,33 +91,6 @@ async function checkPendingBet() {
             localStorage.removeItem('pendingPolymarketBet');
             return;
         }
-        
-        // Проверяем что мы на Polygon
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const network = await provider.getNetwork();
-        
-        if (network.chainId !== 137) {
-            console.log('Not on Polygon yet, switching now...');
-            
-            // Показываем уведомление что переключаемся на Polygon
-            const notification = document.createElement('div');
-            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);';
-            notification.innerHTML = '⏳ Обнаружена незавершенная ставка. Переключение на Polygon...';
-            document.body.appendChild(notification);
-            
-            try {
-                await wallet.switchToPolygon();
-                console.log('Polygon switch requested, waiting for reload...');
-            } catch (error) {
-                console.error('Failed to switch to Polygon:', error);
-                notification.innerHTML = '⚠️ Переключите сеть на Polygon вручную для завершения ставки';
-                notification.style.background = '#ff9800';
-            }
-            
-            return;
-        }
-        
-        console.log('✓ On Polygon! Proceeding with bet placement...');
         
         // Удаляем из localStorage чтобы не повторялось
         localStorage.removeItem('pendingPolymarketBet');
@@ -156,6 +170,57 @@ async function checkPendingBet() {
                 </div>
             `;
         }
+        
+    } catch (error) {
+        console.error('Error processing pending bet:', error);
+    }
+}
+
+async function checkPendingBet() {
+    try {
+        const pendingBetData = localStorage.getItem('pendingPolymarketBet');
+        if (!pendingBetData) return;
+        
+        const pendingBet = JSON.parse(pendingBetData);
+        console.log('Found pending bet:', pendingBet);
+        
+        // Проверяем что это свежая ставка (не старше 10 минут)
+        const age = Date.now() - pendingBet.timestamp;
+        if (age > 10 * 60 * 1000) {
+            console.log('Pending bet too old, removing');
+            localStorage.removeItem('pendingPolymarketBet');
+            return;
+        }
+        
+        // Проверяем что мы на Polygon
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const network = await provider.getNetwork();
+        
+        if (network.chainId !== 137) {
+            console.log('Not on Polygon yet, switching now...');
+            
+            // Показываем уведомление что переключаемся на Polygon
+            const notification = document.createElement('div');
+            notification.id = 'pendingBetNotification';
+            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);';
+            notification.innerHTML = '⏳ Обнаружена незавершенная ставка. Переключение на Polygon...';
+            document.body.appendChild(notification);
+            
+            try {
+                await wallet.switchToPolygon();
+                console.log('Polygon switch requested - chainChanged listener will handle bet placement');
+            } catch (error) {
+                console.error('Failed to switch to Polygon:', error);
+                notification.innerHTML = '⚠️ Переключите сеть на Polygon вручную для завершения ставки';
+                notification.style.background = '#ff9800';
+            }
+            
+            return;
+        }
+        
+        // Если уже на Polygon - сразу обрабатываем
+        console.log('✓ Already on Polygon! Processing bet...');
+        await processPendingBet();
         
     } catch (error) {
         console.error('Error checking pending bet:', error);
