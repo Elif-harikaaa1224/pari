@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Бридж BNB → USDC - PariVision</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <h1>🎯 PariVision</h1>
+            <div class="nav-links">
+                <a href="/">Главная</a>
+                <a href="/bridge">Пополнить</a>
+                <a href="/markets">Маркеты</a>
+                <a href="/my-bets">Мои ставки</a>
+            </div>
+            <div id="walletDisplay" class="wallet-display">Не подключено</div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <h2>Пополнение через BNB</h2>
+        <p>Обменяйте BNB на USDT и переведите на Polygon для ставок</p>
+
+        <div class="bridge-container">
+            <div class="bridge-step">
+                <h3>Шаг 1: Swap BNB → USDT (BSC)</h3>
+                <div class="input-group">
+                    <label>Сумма BNB:</label>
+                    <input type="number" id="bnbAmount" placeholder="0.1" step="0.01" min="0.01">
+                    <small>Доступно: <span id="availableBNB">-</span> BNB</small>
+                </div>
+                <div class="output-group">
+                    <label>Получите USDT:</label>
+                    <div id="estimatedUSDT" class="estimated">-</div>
+                </div>
+                <button id="swapBtn" class="btn btn-primary">Обменять BNB → USDT</button>
+                <div id="swapStatus" class="status"></div>
+            </div>
+
+            <div class="bridge-arrow">⬇️</div>
+
+            <div class="bridge-step">
+                <h3>Шаг 2: Bridge USDT → Polygon</h3>
+                <div class="input-group">
+                    <label>Сумма USDT:</label>
+                    <input type="number" id="usdtAmount" placeholder="Автоматически" readonly>
+                    <small>Баланс USDT: <span id="availableUSDT">-</span></small>
+                </div>
+                <div class="output-group">
+                    <label>Получите USDC (Polygon):</label>
+                    <div id="estimatedUSDC" class="estimated">-</div>
+                    <small>Gas fee: ~$5-10</small>
+                </div>
+                <button id="bridgeBtn" class="btn btn-success" disabled>Перевести на Polygon</button>
+                <div id="bridgeStatus" class="status"></div>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h4>ℹ️ Как это работает:</h4>
+            <ol>
+                <li>Вы обмениваете BNB на USDT через PancakeSwap (BSC сеть)</li>
+                <li>USDT отправляется через Stargate Bridge на Polygon</li>
+                <li>На Polygon вы получаете USDC для ставок</li>
+                <li>Весь процесс занимает 5-10 минут</li>
+            </ol>
+        </div>
+
+        <div class="balances-display">
+            <div class="balance-card">
+                <label>BNB (BSC):</label>
+                <div id="displayBNB">-</div>
+            </div>
+            <div class="balance-card">
+                <label>USDT (BSC):</label>
+                <div id="displayUSDT">-</div>
+            </div>
+            <div class="balance-card">
+                <label>USDC (Polygon):</label>
+                <div id="displayUSDC">-</div>
+            </div>
+        </div>
+    </main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>    <script>
+        if (typeof ethers === 'undefined') {
+            console.error('Ethers.js failed to load!');
+        }
+    </script>
+    <script src="/js/config.js"></script>
+    <script src="/js/wallet.js"></script>
+    <script src="/js/bridge.js"></script>
+    <script>
+        window.addEventListener('load', async () => {
+            await initWallet();
+            await initBridge();
+        });
+    </script>
+</body>
+</html>

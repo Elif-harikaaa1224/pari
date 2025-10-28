@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Маркеты - PariVision</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <h1>🎯 PariVision</h1>
+            <div class="nav-links">
+                <a href="/">Главная</a>
+                <a href="/bridge">Пополнить</a>
+                <a href="/markets">Маркеты</a>
+                <a href="/my-bets">Мои ставки</a>
+            </div>
+            <div id="walletDisplay" class="wallet-display">Не подключено</div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <h2>Доступные маркеты</h2>
+        <p>Выберите событие и сделайте ставку</p>
+
+        <div class="balance-info">
+            <span>Баланс для ставок: <strong id="bettingBalance">-</strong> USDC</span>
+            <span style="margin-left: 2rem;">Цена BNB: <strong class="bnb-price">-</strong></span>
+            <button id="manageProxyBtn" class="btn-secondary" style="margin-left: 2rem; padding: 0.3rem 0.8rem; font-size: 0.85rem;">⚙️ Управление Proxy</button>
+        </div>
+
+        <div id="marketsLoading" class="loading-state">
+            <div class="loading">⏳ Загрузка маркетов...</div>
+        </div>
+
+        <div id="marketsList" class="markets-grid"></div>
+    </main>
+
+    <!-- Betting Modal -->
+    <div id="bettingModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('bettingModal').style.display='none'">&times;</span>
+            <h3 id="modalTitle">Сделать ставку</h3>
+            <div id="modalBody">
+                <div class="bet-info">
+                    <p><strong>Событие:</strong> <span id="betMarketTitle"></span></p>
+                    <p><strong>Исход:</strong> <span id="betOutcome"></span></p>
+                    <p><strong>Ваш Proxy Wallet:</strong> <span id="userProxyAddress">-</span></p>
+                </div>
+                <div class="input-group">
+                    <label>Сумма ставки (BNB):</label>
+                    <input type="number" id="betAmountBNB" placeholder="0.1" min="0.01" step="0.01">
+                    <small>≈ <span id="betAmountUSDC">0</span> USDC</small>
+                </div>
+                <div class="bet-estimate">
+                    <p>Коэффициент: <strong id="betOdds">-</strong></p>
+                    <p>Потенциальный выигрыш: <strong id="betPayout">-</strong> USDC</p>
+                </div>
+                <button id="placeBetBtn" class="btn btn-primary">Разместить ставку</button>
+                <div id="betStatus" class="status"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bridge Modal -->
+    <div id="bridgeModal" class="modal">
+        <div class="modal-content">
+            <h3>🌉 Отправка средств через Bridge</h3>
+            <div id="bridgeBody">
+                <div class="bridge-info">
+                    <p><strong>Сумма BNB:</strong> <span id="bridgeBNBAmount">-</span></p>
+                    <p><strong>Получите USDC:</strong> <span id="bridgeUSDCAmount">-</span></p>
+                    <p><strong>На адрес (Proxy):</strong> <span id="bridgeToAddress">-</span></p>
+                </div>
+                <div id="bridgeStatus" class="status"></div>
+                <div class="bridge-steps">
+                    <div class="step" id="step1">
+                        <span class="step-icon">1</span>
+                        <span class="step-text">Обмен BNB → USDT (PancakeSwap)</span>
+                        <span class="step-status" id="step1Status">⏳</span>
+                    </div>
+                    <div class="step" id="step2">
+                        <span class="step-icon">2</span>
+                        <span class="step-text">Отправка через Stargate</span>
+                        <span class="step-status" id="step2Status">⏳</span>
+                    </div>
+                    <div class="step" id="step3">
+                        <span class="step-icon">3</span>
+                        <span class="step-text">Получение USDC на Polygon</span>
+                        <span class="step-status" id="step3Status">⏳</span>
+                    </div>
+                    <div class="step" id="step4">
+                        <span class="step-icon">4</span>
+                        <span class="step-text">Approve USDC для ставок</span>
+                        <span class="step-status" id="step4Status">⏳</span>
+                    </div>
+                    <div class="step" id="step5">
+                        <span class="step-icon">5</span>
+                        <span class="step-text">Размещение ставки</span>
+                        <span class="step-status" id="step5Status">⏳</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>    <script>
+        if (typeof ethers === 'undefined') {
+            console.error('Ethers.js failed to load!');
+        }
+    </script>
+    <script src="/js/config.js"></script>
+    <script src="/js/bnb-price-tracker.js"></script>
+    <script src="/js/wallet.js"></script>
+    <script src="/js/proxy-wallet.js"></script>
+    <script src="/js/polymarket-order.js"></script>
+    <script src="/js/markets.js"></script>
+    <script>
+        window.addEventListener('load', async () => {
+            await initWallet();
+            await initMarkets();
+            
+            // Добавляем обработчик кнопки управления proxy
+            const manageProxyBtn = document.getElementById('manageProxyBtn');
+            if (manageProxyBtn) {
+                manageProxyBtn.addEventListener('click', manageProxyAddress);
+            }
+        });
+    </script>
+</body>
+</html>

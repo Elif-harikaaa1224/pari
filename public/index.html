@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PariVision - Ставки на события</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <h1>🎯 PariVision</h1>
+            <div class="nav-links">
+                <a href="/">Главная</a>
+                <a href="/bridge">Пополнить</a>
+                <a href="/markets">Маркеты</a>
+                <a href="/my-bets">Мои ставки</a>
+            </div>
+            <button id="connectBtn" class="btn btn-primary">Подключить кошелек</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section class="hero">
+            <h2>Делайте ставки на события с помощью BNB</h2>
+            <p>Подключите MetaMask, пополните через BSC и делайте ставки на Polymarket</p>
+        </section>
+
+        <div id="walletInfo" class="wallet-info" style="display: none;">
+            <h3>Информация о кошельке</h3>
+            <div class="info-grid">
+                <div class="info-card">
+                    <label>Адрес:</label>
+                    <div id="walletAddress" class="mono">-</div>
+                </div>
+                <div class="info-card">
+                    <label>Баланс BNB (BSC):</label>
+                    <div id="bnbBalance" class="mono">-</div>
+                </div>
+                <div class="info-card">
+                    <label>Прокси-кошелек (Polygon):</label>
+                    <div id="proxyAddress" class="mono">-</div>
+                    <button id="setCustomProxy" class="btn-link" style="font-size: 0.75rem; margin-top: 0.5rem; display: block;">Указать свой адрес</button>
+                </div>
+                <div class="info-card">
+                    <label>Баланс USDC (Polygon):</label>
+                    <div id="usdcBalance" class="mono">-</div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <a href="/bridge" class="btn btn-success">Пополнить через BNB</a>
+                <a href="/markets" class="btn btn-primary">Посмотреть маркеты</a>
+                <a href="/my-bets" class="btn btn-secondary">Мои ставки</a>
+            </div>
+        </div>
+
+        <div id="notConnected" class="not-connected">
+            <h3>Подключите кошелек для начала</h3>
+            <p>Нажмите кнопку "Подключить кошелек" в правом верхнем углу</p>
+        </div>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <script src="/js/config.js"></script>
+    <script src="/js/wallet.js"></script>
+    <script>
+        // Initialize on page load
+        window.addEventListener('load', async () => {
+            console.log('Page loaded, checking ethers...');
+            if (typeof ethers === 'undefined') {
+                alert('Ошибка загрузки ethers.js. Обновите страницу.');
+                return;
+            }
+            console.log('Ethers loaded:', ethers.version);
+            
+            await initWallet();
+            await checkConnection();
+            
+            // Setup event listeners after page load
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // Connect button handler
+            const connectBtn = document.getElementById('connectBtn');
+            if (connectBtn) {
+                connectBtn.addEventListener('click', async () => {
+                    try {
+                        await wallet.connect();
+                        await checkConnection();
+                    } catch (error) {
+                        console.error('Connection error:', error);
+                        alert('Ошибка подключения: ' + error.message);
+                    }
+                });
+            }
+
+            // Set custom proxy button
+            const setProxyBtn = document.getElementById('setCustomProxy');
+            if (setProxyBtn) {
+                setProxyBtn.addEventListener('click', async () => {
+                    const customProxy = prompt('Введите адрес вашего прокси-кошелька с Polymarket.com:\n\nНапример: 0x871046Dd7808147DE9640619Ab974F09A7922548');
+                    
+                    if (!customProxy) return;
+                    
+                    if (ethers.utils.isAddress(customProxy)) {
+                        wallet.proxyAddress = customProxy;
+                        localStorage.setItem('customProxyAddress', customProxy);
+                        document.getElementById('proxyAddress').textContent = 
+                            `${customProxy.slice(0, 6)}...${customProxy.slice(-4)}`;
+                        alert('✅ Прокси-адрес сохранен!');
+                        await loadWalletInfo();
+                    } else {
+                        alert('❌ Неверный адрес кошелька!');
+                    }
+                });
+            }
+        }
+
+        async function checkConnection() {
+            const isConnected = await wallet.isConnected();
+            
+            if (isConnected) {
+                document.getElementById('walletInfo').style.display = 'block';
+                document.getElementById('notConnected').style.display = 'none';
+                document.getElementById('connectBtn').textContent = 'Подключено ✓';
+                document.getElementById('connectBtn').disabled = true;
+                
+                // Load wallet info
+                await loadWalletInfo();
+            } else {
+                document.getElementById('walletInfo').style.display = 'none';
+                document.getElementById('notConnected').style.display = 'block';
+            }
+        }
+
+        async function loadWalletInfo() {
+            try {
+                const address = await wallet.getAddress();
+                document.getElementById('walletAddress').textContent = 
+                    `${address.slice(0, 6)}...${address.slice(-4)}`;
+
+                // Load BNB balance
+                try {
+                    const bnbBalance = await wallet.getBNBBalance();
+                    document.getElementById('bnbBalance').textContent = 
+                        `${parseFloat(bnbBalance).toFixed(4)} BNB`;
+                } catch (e) {
+                    console.error('Error loading BNB balance:', e);
+                    document.getElementById('bnbBalance').textContent = 'Ошибка';
+                }
+
+                // Get proxy address
+                const proxyAddress = await wallet.getProxyAddress();
+                document.getElementById('proxyAddress').textContent = 
+                    `${proxyAddress.slice(0, 6)}...${proxyAddress.slice(-4)}`;
+
+                // Load USDC balance
+                try {
+                    const usdcBalance = await wallet.getUSDCBalance(proxyAddress);
+                    document.getElementById('usdcBalance').textContent = 
+                        `${parseFloat(usdcBalance).toFixed(2)} USDC`;
+                } catch (e) {
+                    console.error('Error loading USDC balance:', e);
+                    document.getElementById('usdcBalance').textContent = '0.00 USDC';
+                }
+            } catch (error) {
+                console.error('Error loading wallet info:', error);
+            }
+        }
+    </script>
+</body>
+</html>

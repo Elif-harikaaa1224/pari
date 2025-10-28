@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои ставки - PariVision</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <h1>🎯 PariVision</h1>
+            <div class="nav-links">
+                <a href="/">Главная</a>
+                <a href="/bridge">Пополнить</a>
+                <a href="/markets">Маркеты</a>
+                <a href="/my-bets">Мои ставки</a>
+            </div>
+            <div id="walletDisplay" class="wallet-display">Не подключено</div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <h2>Мои ставки</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <label>Активных ставок:</label>
+                <div id="activeBets" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+                <label>Общая сумма:</label>
+                <div id="totalAmount" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+                <label>Прокси-кошелек:</label>
+                <div id="proxyAddr" class="stat-value mono">-</div>
+            </div>
+        </div>
+
+        <div id="betsLoading" class="loading-state">
+            <div class="loading">⏳ Загрузка ставок...</div>
+        </div>
+
+        <div id="betsList" class="bets-list"></div>
+
+        <div id="noBets" style="display: none;" class="empty-state">
+            <h3>У вас пока нет ставок</h3>
+            <p>Перейдите на страницу маркетов, чтобы сделать первую ставку</p>
+            <a href="/markets" class="btn btn-primary">Перейти к маркетам</a>
+        </div>
+    </main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>    <script>
+        if (typeof ethers === 'undefined') {
+            console.error('Ethers.js failed to load!');
+        }
+    </script>
+    <script src="/js/config.js"></script>
+    <script src="/js/wallet.js"></script>
+    <script>
+        let config = null;
+
+        window.addEventListener('load', async () => {
+            await initWallet();
+            await initMyBets();
+        });
+
+        async function initMyBets() {
+            const isConnected = await wallet.isConnected();
+            
+            if (!isConnected) {
+                alert('Подключите кошелек!');
+                window.location.href = '/';
+                return;
+            }
+
+            config = await loadConfig();
+
+            // Display wallet
+            const address = await wallet.getAddress();
+            document.getElementById('walletDisplay').textContent = 
+                `${address.slice(0, 6)}...${address.slice(-4)}`;
+
+            // Get proxy address
+            const proxyAddress = await wallet.getProxyAddress();
+            document.getElementById('proxyAddr').textContent = 
+                `${proxyAddress.slice(0, 10)}...${proxyAddress.slice(-8)}`;
+
+            // Load bets
+            await loadBets(proxyAddress);
+        }
+
+        async function loadBets(proxyAddress) {
+            try {
+                const response = await fetch(`/api/orders/${proxyAddress}`);
+                const data = await response.json();
+
+                document.getElementById('betsLoading').style.display = 'none';
+
+                if (data.success && data.data && data.data.length > 0) {
+                    displayBets(data.data);
+                    updateStats(data.data);
+                } else {
+                    document.getElementById('noBets').style.display = 'block';
+                    document.getElementById('activeBets').textContent = '0';
+                    document.getElementById('totalAmount').textContent = '0 USDC';
+                }
+            } catch (error) {
+                console.error('Error loading bets:', error);
+                document.getElementById('betsLoading').style.display = 'none';
+                document.getElementById('noBets').style.display = 'block';
+            }
+        }
+
+        function displayBets(orders) {
+            const container = document.getElementById('betsList');
+            container.innerHTML = '';
+
+            orders.forEach(order => {
+                const card = createBetCard(order);
+                container.appendChild(card);
+            });
+        }
+
+        function createBetCard(order) {
+            const card = document.createElement('div');
+            card.className = 'bet-card';
+
+            const side = order.side === 'BUY' ? 'YES' : 'NO';
+            const amount = parseFloat(order.original_size || 0).toFixed(2);
+            const price = parseFloat(order.price || 0).toFixed(3);
+            const status = order.status || 'LIVE';
+            const date = order.created_at ? 
+                new Date(order.created_at).toLocaleDateString('ru-RU') : '-';
+
+            card.innerHTML = `
+                <div class="bet-header">
+                    <h4>Ордер #${order.id?.slice(0, 8) || 'unknown'}</h4>
+                    <span class="bet-status ${status.toLowerCase()}">${status}</span>
+                </div>
+                <div class="bet-details">
+                    <div class="bet-row">
+                        <span>Исход:</span>
+                        <strong>${side}</strong>
+                    </div>
+                    <div class="bet-row">
+                        <span>Сумма:</span>
+                        <strong>${amount} USDC</strong>
+                    </div>
+                    <div class="bet-row">
+                        <span>Цена:</span>
+                        <strong>${price}</strong>
+                    </div>
+                    <div class="bet-row">
+                        <span>Дата:</span>
+                        <strong>${date}</strong>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        function updateStats(orders) {
+            const activeBets = orders.filter(o => o.status === 'LIVE').length;
+            const totalAmount = orders.reduce((sum, o) => sum + parseFloat(o.original_size || 0), 0);
+
+            document.getElementById('activeBets').textContent = activeBets;
+            document.getElementById('totalAmount').textContent = totalAmount.toFixed(2) + ' USDC';
+        }
+    </script>
+</body>
+</html>
