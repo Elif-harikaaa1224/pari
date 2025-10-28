@@ -51,8 +51,14 @@ const wallet = {
                 this.signer = this.provider.getSigner();
                 this.address = accounts[0];
                 
-                // Всегда переключаемся на BSC при загрузке
-                await this.switchToBSC();
+                // НЕ переключаем сеть если есть pendingOrder (пользователь на Polygon для подписи)
+                const pendingOrder = localStorage.getItem('pendingOrder');
+                if (!pendingOrder) {
+                    console.log('ℹ️ No pending order - switching to BSC');
+                    await this.switchToBSC();
+                } else {
+                    console.log('⏳ Pending order found - keeping current network');
+                }
                 
                 await this.calculateProxyAddress();
                 return true;

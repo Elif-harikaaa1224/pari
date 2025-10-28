@@ -6,18 +6,25 @@ let config = null;
 
 // Auto-resume pending order after page reload (Rabby wallet switches networks)
 window.addEventListener('load', async () => {
+    console.log('🔄 Page loaded, checking for pending order...');
+    
     // Wait for wallet to initialize
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     const pendingOrder = localStorage.getItem('pendingOrder');
+    console.log('📦 Pending order:', pendingOrder ? 'FOUND' : 'NOT FOUND');
+    
     if (pendingOrder) {
         try {
             const order = JSON.parse(pendingOrder);
+            console.log('📝 Order data:', order);
             
             // Check if order is still valid (not older than 10 minutes)
             const age = Date.now() - order.timestamp;
+            console.log(`⏰ Order age: ${Math.floor(age / 1000)} seconds`);
+            
             if (age > 10 * 60 * 1000) {
-                console.log('Pending order expired, clearing...');
+                console.log('⚠️ Pending order expired, clearing...');
                 localStorage.removeItem('pendingOrder');
                 return;
             }
@@ -39,37 +46,52 @@ window.addEventListener('load', async () => {
                     }, 500);
                 } else {
                     // Still on BSC - show reminder
-                    console.log('⏳ Still on BSC - waiting for manual switch to Polygon');
+                    console.log('⏳ Still on BSC (chainId:', currentChainId, ') - waiting for manual switch to Polygon');
                     showPolygonSwitchReminder(order);
                 }
+            } else {
+                console.log('❌ window.ethereum not found');
             }
         } catch (error) {
-            console.error('Error processing pending order:', error);
+            console.error('❌ Error processing pending order:', error);
         }
+    } else {
+        console.log('ℹ️ No pending order to resume');
     }
 });
 
 // Listen for network changes to auto-complete order when user switches to Polygon
 if (window.ethereum) {
+    console.log('👂 Registering chainChanged listener...');
+    
     window.ethereum.on('chainChanged', async (chainIdHex) => {
         const chainId = parseInt(chainIdHex, 16);
         console.log('🔄 Network changed to:', chainId);
         
         const pendingOrder = localStorage.getItem('pendingOrder');
+        console.log('📦 Pending order in localStorage:', pendingOrder ? 'EXISTS' : 'NOT FOUND');
+        
         if (pendingOrder && chainId === 137) {
             console.log('✅ Switched to Polygon - auto-completing order...');
             
             try {
                 const order = JSON.parse(pendingOrder);
+                console.log('📝 Order data:', order);
+                
                 // Small delay for network to stabilize
                 setTimeout(() => {
+                    console.log('🚀 Calling autoCompleteOrder...');
                     autoCompleteOrder(order);
                 }, 1000);
             } catch (error) {
-                console.error('Error auto-completing order:', error);
+                console.error('❌ Error auto-completing order:', error);
             }
+        } else if (pendingOrder) {
+            console.log(`⏳ Waiting for Polygon network. Current: ${chainId}`);
         }
     });
+    
+    console.log('✅ chainChanged listener registered');
 }
 
 async function initMarkets() {
@@ -1124,15 +1146,36 @@ async function autoCompleteOrder(order) {
             question: order.marketQuestion
         };
         
-        // Initialize wallet if needed
-        if (!wallet.provider) {
-            await wallet.connect();
+        // Re-initialize wallet on Polygon network
+        wallet.provider = new ethers.providers.Web3Provider(window.ethereum);
+        wallet.signer = wallet.provider.getSigner();
+        wallet.address = await wallet.signer.getAddress();
+        
+        console.log('👛 Wallet address:', wallet.address);
+        
+        // Check saved proxy address for this user
+        const savedProxy = localStorage.getItem(`polymarket_proxy_${wallet.address}`);
+        
+        if (savedProxy && ethers.utils.isAddress(savedProxy)) {
+            wallet.proxyAddress = savedProxy;
+            console.log('🔑 Using saved proxy address:', wallet.proxyAddress);
+        } else {
+            // If no saved proxy, try to calculate
+            await wallet.calculateProxyAddress();
+            console.log('🔑 Calculated proxy address:', wallet.proxyAddress);
         }
+        
+        // Verify it matches the order's proxy address
+        if (wallet.proxyAddress.toLowerCase() !== order.proxyAddress.toLowerCase()) {
+            throw new Error(`Proxy address mismatch!\nExpected: ${order.proxyAddress}\nGot: ${wallet.proxyAddress}\n\nПроверьте сохраненный Proxy адрес в настройках.`);
+        }
+        
+        console.log('✅ Proxy address verified');
         
         // Place order
         const orderResult = await placePolymarketOrder(
             parseFloat(order.usdcAmount),
-            order.proxyAddress
+            wallet.proxyAddress
         );
         
         console.log('✅ Order placed:', orderResult);
