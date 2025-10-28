@@ -942,7 +942,8 @@ async function completePendingOrder() {
         // Размещаем ставку (уже на Polygon)
         const orderResult = await placePolymarketOrder(
             parseFloat(order.usdcAmount),
-            order.proxyAddress
+            order.proxyAddress,
+            wallet.address
         );
         
         console.log('✓ Order placed:', orderResult);
@@ -1069,17 +1070,19 @@ async function approveUSDCForBetting(proxyAddress, amount) {
     console.log('USDC approved for CTF Exchange');
 }
 
-async function placePolymarketOrder(usdcAmount, makerAddress) {
+async function placePolymarketOrder(usdcAmount, makerAddress, ownerAddress) {
     console.log('=== Placing Polymarket Order ===');
     console.log('Selected market:', selectedMarket);
     console.log('Selected token:', selectedToken);
     console.log('Token ID:', selectedToken.id);
-    console.log('Maker address:', makerAddress);
+    console.log('Maker address (proxy):', makerAddress);
+    console.log('Owner address (wallet):', ownerAddress);
     console.log('USDC amount:', usdcAmount);
     
     const result = await polymarketOrderSigner.placeOrder({
         tokenId: selectedToken.id,
         makerAddress: makerAddress,
+        ownerAddress: ownerAddress,
         usdcAmount: usdcAmount,
         side: 'BUY',
         signer: wallet.signer
@@ -1175,7 +1178,8 @@ async function autoCompleteOrder(order) {
         // Place order
         const orderResult = await placePolymarketOrder(
             parseFloat(order.usdcAmount),
-            wallet.proxyAddress
+            wallet.proxyAddress,  // maker (proxy)
+            wallet.address        // owner (wallet)
         );
         
         console.log('✅ Order placed:', orderResult);

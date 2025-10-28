@@ -210,7 +210,7 @@ class PolymarketOrderSigner {
 
     // Complete flow: create, sign, and post order
     async placeOrder(params) {
-        const { tokenId, makerAddress, usdcAmount, side, signer } = params;
+        const { tokenId, makerAddress, ownerAddress, usdcAmount, side, signer } = params;
 
         try {
             // 1. Create order data
@@ -226,11 +226,15 @@ class PolymarketOrderSigner {
             console.log(`- Price: ${price}`);
             console.log(`- Outcome tokens: ${outcomeTokens.toFixed(4)}`);
 
-            // 2. Sign order (передаем адрес вместо signer)
-            const signature = await this.signOrder(order, makerAddress);
+            // 2. Sign order (используем ownerAddress для подписи)
+            const signerAddr = ownerAddress || makerAddress;
+            console.log('Signing with address:', signerAddr);
+            const signature = await this.signOrder(order, signerAddr);
 
-            // 3. Post to CLOB
-            const result = await this.postOrder(order, signature, makerAddress);
+            // 3. Post to CLOB (используем ownerAddress как owner)
+            const ownerAddr = ownerAddress || makerAddress;
+            console.log('Posting with owner:', ownerAddr);
+            const result = await this.postOrder(order, signature, ownerAddr);
 
             return {
                 success: true,
