@@ -27,7 +27,7 @@
         <div class="balance-info">
             <span>Баланс для ставок: <strong id="bettingBalance">-</strong> USDC</span>
             <span style="margin-left: 2rem;">Цена BNB: <strong class="bnb-price">-</strong></span>
-            <button id="manageProxyBtn" class="btn-secondary" style="margin-left: 2rem; padding: 0.3rem 0.8rem; font-size: 0.85rem;">⚙️ Управление Proxy</button>
+            <button onclick="manageProxyAddress()" class="btn-secondary" style="margin-left: 2rem; padding: 0.3rem 0.8rem; font-size: 0.85rem;">⚙️ Управление Proxy</button>
         </div>
 
         <div id="marketsLoading" class="loading-state">
@@ -46,7 +46,14 @@
                 <div class="bet-info">
                     <p><strong>Событие:</strong> <span id="betMarketTitle"></span></p>
                     <p><strong>Исход:</strong> <span id="betOutcome"></span></p>
-                    <p><strong>Ваш Proxy Wallet:</strong> <span id="userProxyAddress">-</span></p>
+                    <p><strong>Коэффициент:</strong> <span id="betOdds">-</span></p>
+                    <p style="background: #e3f2fd; padding: 8px; border-radius: 5px; margin-top: 10px;">
+                        <strong>🔑 Ваш Proxy Wallet:</strong><br>
+                        <code style="font-size: 11px; word-break: break-all;" id="userProxyAddress">-</code>
+                    </p>
+                    <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 13px;">
+                        ℹ️ <strong>Важно:</strong> USDC должен быть на вашем <strong>Proxy адресе</strong> выше, а не на обычном кошельке!
+                    </div>
                 </div>
                 <div class="input-group">
                     <label>Сумма ставки (BNB):</label>
@@ -54,8 +61,15 @@
                     <small>≈ <span id="betAmountUSDC">0</span> USDC</small>
                 </div>
                 <div class="bet-estimate">
-                    <p>Коэффициент: <strong id="betOdds">-</strong></p>
                     <p>Потенциальный выигрыш: <strong id="betPayout">-</strong> USDC</p>
+                </div>
+                <div style="background: #f0f0f0; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 12px;">
+                    <strong>💡 Как работает Bridge:</strong><br>
+                    1️⃣ BNB обменивается на USDT (BSC)<br>
+                    2️⃣ USDT отправляется через Stargate на Polygon<br>
+                    3️⃣ На Polygon получаете USDC на ваш Proxy адрес<br>
+                    4️⃣ Автоматически размещается ставка через подпись<br><br>
+                    ⏱️ Весь процесс занимает ~5-10 минут
                 </div>
                 <button id="placeBetBtn" class="btn btn-primary">Разместить ставку</button>
                 <div id="betStatus" class="status"></div>

@@ -48,11 +48,28 @@ class ProxyWalletManager {
                 console.log('Could not check Polymarket API:', error.message);
             }
 
-            // 4. Просим пользователя ввести существующий proxy адрес
+            // 4. Пытаемся вычислить proxy адрес детерминистически
+            try {
+                const computedProxy = await this.computeProxyAddress(userAddress, signer);
+                const provider = signer.provider;
+                const code = await provider.getCode(computedProxy);
+                
+                if (code !== '0x') {
+                    console.log('✓ Found deployed proxy at computed address:', computedProxy);
+                    this.proxyCache[userAddress] = computedProxy;
+                    localStorage.setItem(`polymarket_proxy_${userAddress}`, computedProxy);
+                    return computedProxy;
+                }
+            } catch (error) {
+                console.log('Could not compute proxy address:', error.message);
+            }
+
+            // 5. Просим пользователя ввести существующий proxy адрес
             const userProxyInput = prompt(
-                'Введите ваш существующий Polymarket Proxy Wallet адрес:\n\n' +
-                'Найти его можно на polymarket.com в вашем профиле.\n' +
-                'Если у вас его еще нет, оставьте поле пустым для создания нового.'
+                '🔑 Введите ваш Polymarket Proxy Wallet адрес:\n\n' +
+                '📍 Найти на: polymarket.com → Profile → Settings → Wallet Address\n' +
+                '⚠️  Это НЕ ваш обычный кошелек, а специальный Polymarket Proxy!\n\n' +
+                'Если у вас еще нет proxy - создайте его на polymarket.com, сделав любую тестовую ставку.'
             );
 
             if (userProxyInput && ethers.utils.isAddress(userProxyInput)) {
@@ -63,9 +80,16 @@ class ProxyWalletManager {
                 return proxyAddress;
             }
 
-            // 5. Если ничего не ввели - создаем новый (это может не работать)
-            alert('⚠️ Создание нового proxy wallet может не работать. Рекомендуется использовать существующий адрес с polymarket.com');
-            throw new Error('Для размещения ставок нужен существующий Polymarket Proxy Wallet адрес');
+            // 6. Если не ввели - показываем инструкцию
+            throw new Error(
+                'Для размещения ставок нужен Polymarket Proxy Wallet.\n\n' +
+                'Как получить:\n' +
+                '1. Зайдите на polymarket.com\n' +
+                '2. Подключите ваш кошелек\n' +
+                '3. Сделайте любую минимальную ставку (это создаст proxy)\n' +
+                '4. В профиле скопируйте Proxy Wallet адрес\n' +
+                '5. Вернитесь сюда и используйте кнопку "⚙️ Управление Proxy"'
+            );
 
         } catch (error) {
             console.error('Error managing proxy wallet:', error);

@@ -15,8 +15,9 @@ async function initMarkets() {
         document.getElementById('walletDisplay').textContent = 
             `${address.slice(0, 6)}...${address.slice(-4)}`;
 
-        // Load balance
+        // Load balance and check proxy
         await updateBalance();
+        await checkAndDisplayProxy();
     } else {
         // Show connect wallet button
         document.getElementById('walletDisplay').innerHTML = 
@@ -31,6 +32,43 @@ async function initMarkets() {
     setupModal();
 }
 
+async function checkAndDisplayProxy() {
+    try {
+        const userAddress = wallet.address;
+        const savedProxy = localStorage.getItem(`polymarket_proxy_${userAddress}`);
+        
+        if (savedProxy && ethers.utils.isAddress(savedProxy)) {
+            console.log('📌 Your Polymarket Proxy Wallet:', savedProxy);
+            
+            // Показываем пользователю его proxy адрес
+            const proxyInfo = document.createElement('div');
+            proxyInfo.style.cssText = 'margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px; font-size: 12px;';
+            proxyInfo.innerHTML = `
+                <strong>🔑 Polymarket Proxy:</strong> 
+                <code>${savedProxy.slice(0, 10)}...${savedProxy.slice(-8)}</code>
+                <button onclick="manageProxyAddress()" style="margin-left: 10px; padding: 2px 8px;">⚙️</button>
+            `;
+            
+            const container = document.querySelector('.markets-container') || document.body;
+            container.insertBefore(proxyInfo, container.firstChild);
+        } else {
+            // Показываем уведомление что нужно настроить proxy
+            const proxyWarning = document.createElement('div');
+            proxyWarning.style.cssText = 'margin: 10px 0; padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px;';
+            proxyWarning.innerHTML = `
+                ⚠️ <strong>Proxy Wallet не настроен</strong><br>
+                Для размещения ставок необходим Polymarket Proxy Wallet.<br>
+                <button onclick="manageProxyAddress()" class="btn btn-primary" style="margin-top: 5px;">⚙️ Настроить Proxy</button>
+            `;
+            
+            const container = document.querySelector('.markets-container') || document.body;
+            container.insertBefore(proxyWarning, container.firstChild);
+        }
+    } catch (error) {
+        console.error('Error checking proxy:', error);
+    }
+}
+
 async function connectWallet() {
     try {
         await wallet.connect();
@@ -43,10 +81,19 @@ async function connectWallet() {
 
 async function updateBalance() {
     try {
-        const proxyAddress = await wallet.getProxyAddress();
-        const balance = await wallet.getUSDCBalance(proxyAddress);
-        document.getElementById('bettingBalance').textContent = 
-            parseFloat(balance).toFixed(2);
+        const userAddress = wallet.address;
+        const savedProxy = localStorage.getItem(`polymarket_proxy_${userAddress}`);
+        
+        if (savedProxy && ethers.utils.isAddress(savedProxy)) {
+            await wallet.switchToPolygon();
+            const balance = await wallet.getUSDCBalance(savedProxy);
+            document.getElementById('bettingBalance').textContent = 
+                parseFloat(balance).toFixed(2);
+            console.log(`💰 USDC balance on proxy (${savedProxy}):`, balance);
+        } else {
+            document.getElementById('bettingBalance').textContent = '0.00';
+            console.log('⚠️ No proxy address configured');
+        }
     } catch (error) {
         console.error('Error loading balance:', error);
         document.getElementById('bettingBalance').textContent = '0.00';
@@ -271,6 +318,22 @@ async function openBettingModal(market, button) {
         return;
     }
     
+    // Проверяем наличие proxy адреса
+    const userAddress = wallet.address;
+    const savedProxy = localStorage.getItem(`polymarket_proxy_${userAddress}`);
+    
+    if (!savedProxy || !ethers.utils.isAddress(savedProxy)) {
+        const shouldSetup = confirm(
+            '⚠️ Proxy Wallet не настроен!\n\n' +
+            'Для размещения ставок нужен Polymarket Proxy Wallet.\n\n' +
+            'Настроить сейчас?'
+        );
+        if (shouldSetup) {
+            await manageProxyAddress();
+        }
+        return;
+    }
+    
     selectedMarket = market;
     selectedToken = {
         id: button.dataset.token,
@@ -285,8 +348,8 @@ async function openBettingModal(market, button) {
     document.getElementById('betOutcome').textContent = selectedToken.outcome;
     document.getElementById('betOdds').textContent = odds;
     
-    // Show proxy address placeholder
-    document.getElementById('userProxyAddress').textContent = 'Определяется при размещении ставки...';
+    // Показываем proxy address
+    document.getElementById('userProxyAddress').textContent = savedProxy;
     
     document.getElementById('bettingModal').style.display = 'block';
     document.getElementById('betAmountBNB').value = '';
