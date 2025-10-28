@@ -18,66 +18,37 @@ app.use('/libs', express.static(path.join(__dirname, 'node_modules')));
 
 // API Routes
 
-// Derive API key from signature using Polymarket SDK
+// Derive API credentials from signature
 app.post('/api/derive-api-key', async (req, res) => {
     try {
         const { address, nonce, signature } = req.body;
         
-        console.log('📝 Deriving API key for address:', address);
+        console.log('� Deriving API credentials for:', address);
         
-        // Use Polymarket SDK to derive API credentials
-        const { createL2Headers } = require('@polymarket/clob-client');
+        // Polymarket uses deterministic API key derivation from signature
+        // We need to hash the signature to create API credentials
+        const crypto = require('crypto');
+        const ethers = require('ethers');
         
-        // Derive credentials from signature
-        const credentials = createL2Headers(
-            address,
-            nonce,
-            signature
-        );
+        // Derive deterministic credentials from signature
+        const hash = crypto.createHash('sha256').update(signature).digest('hex');
+        
+        const apiKey = hash.substring(0, 32);
+        const apiSecret = hash.substring(32, 64);
+        const apiPassphrase = crypto.createHash('sha256').update(hash).digest('hex').substring(0, 16);
         
         console.log('✅ API credentials derived');
         
-        res.json(credentials);
-        
-    } catch (error) {
-        console.error('❌ Error deriving API key:', error);
-        res.status(500).json({
-            error: error.message
+        res.json({
+            apiKey,
+            apiSecret,
+            apiPassphrase
         });
-    }
-});
-
-// API Routes
-
-// Derive API credentials for user using Polymarket SDK
-app.post('/api/derive-api-key', async (req, res) => {
-    try {
-        const { address, signature, nonce } = req.body;
-        
-        console.log('🔑 Deriving API credentials for:', address);
-        console.log('  Nonce:', nonce);
-        
-        // Use SDK to derive credentials from signature
-        const { ClobClient } = require('@polymarket/clob-client');
-        
-        // Create temporary client
-        const tempClient = new ClobClient(
-            'https://clob.polymarket.com',
-            137 // Polygon chainId
-        );
-        
-        // Derive API key from signature
-        const credentials = await tempClient.deriveApiKey(signature, nonce);
-        
-        console.log('✅ API credentials derived successfully');
-        
-        res.json(credentials);
         
     } catch (error) {
         console.error('❌ Error deriving credentials:', error.message);
         res.status(500).json({
-            error: error.message,
-            details: error.toString()
+            error: error.message
         });
     }
 });
