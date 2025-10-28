@@ -56,7 +56,23 @@ async function checkPendingBet() {
         const network = await provider.getNetwork();
         
         if (network.chainId !== 137) {
-            console.log('Not on Polygon yet, waiting...');
+            console.log('Not on Polygon yet, switching now...');
+            
+            // Показываем уведомление что переключаемся на Polygon
+            const notification = document.createElement('div');
+            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);';
+            notification.innerHTML = '⏳ Обнаружена незавершенная ставка. Переключение на Polygon...';
+            document.body.appendChild(notification);
+            
+            try {
+                await wallet.switchToPolygon();
+                console.log('Polygon switch requested, waiting for reload...');
+            } catch (error) {
+                console.error('Failed to switch to Polygon:', error);
+                notification.innerHTML = '⚠️ Переключите сеть на Polygon вручную для завершения ставки';
+                notification.style.background = '#ff9800';
+            }
+            
             return;
         }
         

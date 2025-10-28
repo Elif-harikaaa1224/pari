@@ -51,8 +51,14 @@ const wallet = {
                 this.signer = this.provider.getSigner();
                 this.address = accounts[0];
                 
-                // Переключаемся на BSC при загрузке страницы
-                await this.switchToBSC();
+                // Проверяем есть ли pending bet - если да, НЕ переключаем на BSC
+                const hasPendingBet = localStorage.getItem('pendingPolymarketBet');
+                if (!hasPendingBet) {
+                    console.log('No pending bet, switching to BSC');
+                    await this.switchToBSC();
+                } else {
+                    console.log('Pending bet found, staying on current network');
+                }
                 
                 await this.calculateProxyAddress();
                 return true;
