@@ -700,13 +700,29 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         
         // Step 5: Размещение ставки
         updateStep(5, 'active');
-        onStatusUpdate('⏳ Переключите сеть на Polygon для размещения ставки...');
+        
+        console.log('=== Step 5: Placing bet ===');
+        console.log('Selected market:', selectedMarket);
+        console.log('Selected token:', selectedToken);
+        console.log('USDC balance:', usdcBalance);
+        console.log('Proxy address:', proxyAddress);
+        
+        // Показываем промежуточное сообщение
+        status.innerHTML = `
+            <div class="info">
+                ✅ USDC получен: ${usdcBalance}<br><br>
+                ⏳ Переключите сеть на <strong>Polygon</strong> в кошельке для размещения ставки...<br><br>
+                <small>Ожидание переключения сети...</small>
+            </div>
+        `;
         
         // Запрашиваем переключение на Polygon
         try {
+            console.log('Requesting Polygon network switch...');
             await wallet.switchToPolygon();
+            console.log('Switch request sent');
         } catch (switchError) {
-            console.log('User needs to switch network manually');
+            console.log('Switch error (user may need to switch manually):', switchError);
         }
         
         // Ждем пока пользователь переключится на Polygon
@@ -715,9 +731,11 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
             try {
                 const checkProvider = new ethers.providers.Web3Provider(window.ethereum);
                 const checkNetwork = await checkProvider.getNetwork();
+                console.log(`Network check ${attempt + 1}: chainId =`, checkNetwork.chainId);
+                
                 if (checkNetwork.chainId === 137) {
                     polygonConnected = true;
-                    console.log('✓ Switched to Polygon');
+                    console.log('✓ Switched to Polygon successfully');
                     break;
                 }
             } catch (e) {
@@ -729,13 +747,37 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         }
         
         if (!polygonConnected) {
-            throw new Error('Не удалось переключиться на Polygon. Переключите сеть вручную.');
+            const errorMsg = 'Не удалось переключиться на Polygon. Переключите сеть вручную и попробуйте разместить ставку снова.';
+            console.error(errorMsg);
+            
+            status.innerHTML = `
+                <div class="error">
+                    ❌ ${errorMsg}<br><br>
+                    <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br>
+                    <strong>USDC на адресе:</strong> ${proxyAddress}<br>
+                    <strong>Баланс:</strong> ${usdcBalance} USDC<br><br>
+                    <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">📊 Polygon Address</a>
+                </div>
+            `;
+            
+            updateStep(5, 'error');
+            const statusSpan = document.getElementById('step5Status');
+            if (statusSpan) statusSpan.textContent = '❌';
+            return;
         }
         
         onStatusUpdate('⏳ Создание и подпись ордера для Polymarket...');
+        console.log('Starting order placement...');
         
         // Размещаем ставку
-        const orderResult = await placePolymarketOrder(parseFloat(usdcBalance), proxyAddress);
+        let orderResult;
+        try {
+            orderResult = await placePolymarketOrder(parseFloat(usdcBalance), proxyAddress);
+            console.log('Order result:', orderResult);
+        } catch (orderError) {
+            console.error('Order placement error:', orderError);
+            throw new Error('Ошибка размещения ставки: ' + orderError.message);
+        }
         
         updateStep(5, 'completed', '✅');
         
@@ -760,7 +802,7 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
 
     } catch (error) {
         console.error('Bridge process error:', error);
-        status.innerHTML = `<div class="error">❌ Ошибка: ${error.message}</div>`;
+        status.innerHTML = `<div class="error">❌ Ошибка: ${error.message}<br><br>Детали в консоли (F12)</div>`;
         
         // Mark current step as error
         const activeStep = document.querySelector('.step.active');
