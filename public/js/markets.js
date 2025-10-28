@@ -505,19 +505,25 @@ function calculatePayout() {
     document.getElementById('betPayout').textContent = payout.toFixed(2);
 }
 
-async function placeBet() {
+async function placeBet(event) {
+    // Предотвращаем перезагрузку страницы
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    
     const amountBNB = parseFloat(document.getElementById('betAmountBNB').value);
     
     if (!amountBNB || amountBNB <= 0) {
         alert('Введите сумму ставки в BNB');
-        return;
+        return false;
     }
 
     try {
         // 0. Проверка подключения кошелька
         if (!wallet.address) {
             alert('Подключите кошелек');
-            return;
+            return false;
         }
 
         // 1. Проверка proxy адреса
@@ -555,6 +561,8 @@ async function placeBet() {
         console.error('Bet placement error:', error);
         alert('Ошибка: ' + error.message);
     }
+    
+    return false; // Предотвращаем любое стандартное поведение
 }
 
 async function showBridgeProcess(amountBNB, proxyAddress) {
