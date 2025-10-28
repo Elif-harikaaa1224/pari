@@ -560,10 +560,38 @@ async function placeBet(event) {
         console.log('Bet amount (BNB):', amountBNB);
         console.log('Symbiosis bridge available:', typeof symbiosisBridge);
 
-        // 2. Переключаемся на BSC для bridge
-        console.log('Switching to BSC...');
-        await wallet.switchToBSC();
-        console.log('Switched to BSC successfully');
+        // 2. Проверяем что мы на BSC
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const network = await provider.getNetwork();
+        console.log('Current network:', network.chainId);
+        
+        if (network.chainId !== 56) {
+            // Просим пользователя переключиться на BSC вручную
+            const switchConfirmed = confirm('⚠️ Для bridge нужна сеть BSC.\n\nПереключите сеть в кошельке на BNB Smart Chain и нажмите OK');
+            if (!switchConfirmed) {
+                return false;
+            }
+            
+            // Пробуем переключить программно
+            try {
+                await wallet.switchToBSC();
+            } catch (e) {
+                alert('Переключите сеть на BSC в кошельке и попробуйте снова');
+                return false;
+            }
+            
+            // Даем время на переключение
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Проверяем снова
+            const newNetwork = await provider.getNetwork();
+            if (newNetwork.chainId !== 56) {
+                alert('Сеть не была переключена на BSC. Переключите вручную и попробуйте снова.');
+                return false;
+            }
+        }
+        
+        console.log('✓ On BSC network');
         
         // 3. Показать bridge modal и выполнить bridge
         console.log('Opening bridge process modal...');
@@ -634,13 +662,17 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         // Step 2-3: Выполнить полный bridge процесс (PancakeSwap + Stargate)
         updateStep(2, 'active');
         
-        // Убедимся что мы на BSC
-        await wallet.switchToBSC();
+        // Проверяем что мы на BSC (не переключаем, только проверяем)
+        const currentProvider = new ethers.providers.Web3Provider(window.ethereum);
+        const currentNetwork = await currentProvider.getNetwork();
+        if (currentNetwork.chainId !== 56) {
+            throw new Error('Переключитесь на BSC в кошельке');
+        }
         
         const result = await symbiosisBridge.bridgeAndBet(
             amountBNB,
             proxyAddress,
-            wallet.provider,
+            currentProvider,
             onStatusUpdate
         );
         
@@ -651,8 +683,14 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         updateStep(4, 'active');
         onStatusUpdate('⏳ Ожидание получения USDC на Polygon (5-15 мин)...');
         
-        // Переключаемся на Polygon для проверки баланса
-        await wallet.switchToPolygon();
+        // Создаем отдельный provider для Polygon (без переключения сети в кошельке)
+        const polygonRPC = 'https://polygon-rpc.com';
+        const polygonProvider = new ethers.providers.JsonRpcProvider(polygonRPC);
+        const usdcContract = new ethers.Contract(
+            '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC on Polygon
+            ['function balanceOf(address) view returns (uint256)'],
+            polygonProvider
+        );
         
         // Ждем 30 секунд перед первой проверкой
         await new Promise(resolve => setTimeout(resolve, 30000));
@@ -660,11 +698,16 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         // Проверяем баланс несколько раз
         let usdcBalance = '0';
         for (let i = 0; i < 20; i++) {
-            usdcBalance = await wallet.getUSDCBalance(proxyAddress);
-            console.log(`Balance check ${i + 1}/20:`, usdcBalance);
-            
-            if (parseFloat(usdcBalance) >= parseFloat(estimatedOutput) * 0.9) {
-                break; // Баланс получен!
+            try {
+                const balance = await usdcContract.balanceOf(proxyAddress);
+                usdcBalance = ethers.utils.formatUnits(balance, 6); // USDC has 6 decimals
+                console.log(`Balance check ${i + 1}/20:`, usdcBalance);
+                
+                if (parseFloat(usdcBalance) >= parseFloat(estimatedOutput) * 0.9) {
+                    break; // Баланс получен!
+                }
+            } catch (e) {
+                console.error('Balance check error:', e);
             }
             
             onStatusUpdate(`⏳ Ожидание USDC... Проверка ${i + 1}/20 (${Math.floor((i + 1) * 30)}с)`);
@@ -675,6 +718,28 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         
         // Step 5: Размещение ставки
         updateStep(5, 'active');
+        onStatusUpdate('⏳ Переключитесь на Polygon для размещения ставки...');
+        
+        // Просим переключиться на Polygon для подписи ордера
+        alert('✅ USDC получен!\n\n🔄 Теперь переключите сеть на Polygon в кошельке для размещения ставки.');
+        
+        // Проверяем что переключились на Polygon
+        let polygonConnected = false;
+        for (let attempt = 0; attempt < 30; attempt++) {
+            const checkProvider = new ethers.providers.Web3Provider(window.ethereum);
+            const checkNetwork = await checkProvider.getNetwork();
+            if (checkNetwork.chainId === 137) {
+                polygonConnected = true;
+                break;
+            }
+            onStatusUpdate(`⏳ Ожидание переключения на Polygon... (${attempt + 1}/30)`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        if (!polygonConnected) {
+            throw new Error('Не удалось переключиться на Polygon. Переключите вручную и попробуйте снова.');
+        }
+        
         onStatusUpdate('⏳ Создание и подпись ордера для Polymarket...');
         
         const orderResult = await placePolymarketOrder(estimatedOutput, proxyAddress);
