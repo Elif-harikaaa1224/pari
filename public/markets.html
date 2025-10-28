@@ -119,31 +119,16 @@
         </div>
     </div>
 
-    <!-- Load Ethers.js from multiple CDN sources -->
-    <script 
-        src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"
-        integrity="sha256-jGThH8s4RTKu5bBH5a6JYNlOFGWH8S1FWkU+jkC0YoI="
-        crossorigin="anonymous"
-        onerror="console.error('Failed to load ethers from jsdelivr'); loadEthersBackup();">
-    </script>
+    <!-- Load Ethers.js from local node_modules -->
+    <script src="/libs/ethers/dist/ethers.umd.min.js"></script>
     <script>
-        function loadEthersBackup() {
-            console.log('Loading ethers from backup CDN...');
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js';
-            script.crossOrigin = 'anonymous';
-            document.head.appendChild(script);
-        }
-        
         // Проверка загрузки ethers
-        setTimeout(() => {
-            if (typeof ethers === 'undefined') {
-                console.error('❌ Ethers.js failed to load!');
-                alert('Ошибка загрузки библиотек. Проверьте интернет-соединение и перезагрузите страницу.');
-            } else {
-                console.log('✓ Ethers.js loaded successfully');
-            }
-        }, 1000);
+        if (typeof ethers === 'undefined') {
+            console.error('❌ Ethers.js failed to load!');
+            alert('Критическая ошибка: Библиотека ethers.js не загружена. Перезагрузите страницу.');
+        } else {
+            console.log('✓ Ethers.js loaded successfully', ethers.version);
+        }
     </script>
     
     <script src="/js/config.js"></script>

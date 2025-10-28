@@ -12,6 +12,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+// Serve ethers.js from node_modules
+app.use('/libs', express.static(path.join(__dirname, 'node_modules')));
+
 // API Routes
 
 // Proxy endpoint для размещения ставок в Polymarket
