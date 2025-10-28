@@ -179,8 +179,9 @@ class StargateBridge {
                 dstNativeAddr: '0x'
             };
 
-            // Адрес получателя в bytes
-            const toAddressBytes = ethers.utils.defaultAbiCoder.encode(['address'], [toAddress]);
+            // Адрес получателя в bytes (без ABI encoding, просто bytes)
+            // Stargate ожидает адрес как bytes, но БЕЗ padding
+            const toAddressBytes = toAddress;
 
             onStatusUpdate?.('⏳ Подтвердите bridge транзакцию в MetaMask...');
 
