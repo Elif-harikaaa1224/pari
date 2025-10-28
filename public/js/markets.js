@@ -708,6 +708,10 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
                 <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br>
                 <strong>Получено USDC на Polygon:</strong> ${usdcBalance}<br>
                 <strong>Proxy Address:</strong> ${proxyAddress.slice(0, 10)}...${proxyAddress.slice(-8)}<br><br>
+                
+                <a href="https://layerzeroscan.com/tx/${result.txHash}" target="_blank" class="btn btn-primary">🔍 Отследить на LayerZero</a>
+                <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">📊 Polygon Address</a>
+                
                 <div style="background: #e3f2fd; padding: 10px; border-radius: 5px; margin-top: 10px;">
                     ℹ️ Для размещения ставки переключите сеть на <strong>Polygon</strong> в кошельке.<br>
                     Затем вернитесь на эту страницу и разместите ставку вручную.
