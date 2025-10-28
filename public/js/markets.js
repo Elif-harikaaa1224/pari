@@ -1175,7 +1175,7 @@ async function autoCompleteOrder(order) {
         
         console.log('✅ Proxy address verified');
         
-        // Place order
+        // Place order with API credentials
         const orderResult = await placePolymarketOrder(
             parseFloat(order.usdcAmount),
             wallet.proxyAddress,  // maker (proxy)

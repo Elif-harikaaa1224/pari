@@ -6,6 +6,80 @@ class PolymarketOrderSigner {
         this.clobApiUrl = 'https://clob.polymarket.com';
         this.ctfExchangeAddress = '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E';
         this.chainId = 137; // Polygon
+        this.apiKey = null;
+        this.apiSecret = null;
+        this.apiPassphrase = null;
+    }
+
+    // Get or create API credentials via signature
+    async getApiCredentials(address) {
+        // Check if we have cached credentials for this address
+        const cachedCreds = localStorage.getItem(`polymarket_creds_${address}`);
+        if (cachedCreds) {
+            const creds = JSON.parse(cachedCreds);
+            // Check if not expired (credentials valid for 7 days)
+            if (Date.now() - creds.timestamp < 7 * 24 * 60 * 60 * 1000) {
+                console.log('Using cached API credentials');
+                this.apiKey = creds.apiKey;
+                this.apiSecret = creds.apiSecret;
+                this.apiPassphrase = creds.apiPassphrase;
+                return creds;
+            }
+        }
+
+        console.log('Creating new API credentials...');
+        
+        // Request credentials from Polymarket
+        // User needs to sign a message to prove ownership
+        const timestamp = Math.floor(Date.now() / 1000);
+        const message = `This request will not trigger a blockchain transaction or cost any gas fees.\n\nYour authentication status will reset after 7 days.\n\nTimestamp: ${timestamp}`;
+        
+        try {
+            // Sign message
+            const signature = await window.ethereum.request({
+                method: 'personal_sign',
+                params: [message, address]
+            });
+
+            console.log('Message signed, requesting credentials from API...');
+
+            // Request credentials from Polymarket
+            const response = await fetch(`${this.clobApiUrl}/auth/api-key`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    address: address,
+                    timestamp: timestamp,
+                    signature: signature
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(`Failed to get API credentials: ${error.error || response.statusText}`);
+            }
+
+            const creds = await response.json();
+            
+            // Cache credentials
+            localStorage.setItem(`polymarket_creds_${address}`, JSON.stringify({
+                ...creds,
+                timestamp: Date.now()
+            }));
+
+            this.apiKey = creds.apiKey;
+            this.apiSecret = creds.apiSecret;
+            this.apiPassphrase = creds.apiPassphrase;
+
+            console.log('✅ API credentials obtained');
+            return creds;
+
+        } catch (error) {
+            console.error('Error getting API credentials:', error);
+            throw error;
+        }
     }
 
     // EIP-712 Domain for Polymarket CTF Exchange
@@ -170,7 +244,11 @@ class PolymarketOrderSigner {
                 },
                 owner: ownerAddress,
                 orderType: 'FOK', // Fill or Kill
-                signature: signature
+                signature: signature,
+                // Add API credentials
+                apiKey: this.apiKey,
+                apiSecret: this.apiSecret,
+                apiPassphrase: this.apiPassphrase
             };
 
             console.log('Order payload:', payload);
@@ -213,6 +291,11 @@ class PolymarketOrderSigner {
         const { tokenId, makerAddress, ownerAddress, usdcAmount, side, signer } = params;
 
         try {
+            // 0. Get API credentials first
+            const ownerAddr = ownerAddress || makerAddress;
+            console.log('Getting API credentials for:', ownerAddr);
+            await this.getApiCredentials(ownerAddr);
+            
             // 1. Create order data
             const { order, price, outcomeTokens } = await this.createOrderData({
                 tokenId,
@@ -232,7 +315,6 @@ class PolymarketOrderSigner {
             const signature = await this.signOrder(order, signerAddr);
 
             // 3. Post to CLOB (используем ownerAddress как owner)
-            const ownerAddr = ownerAddress || makerAddress;
             console.log('Posting with owner:', ownerAddr);
             const result = await this.postOrder(order, signature, ownerAddr);
 
