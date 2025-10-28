@@ -18,6 +18,70 @@ app.use('/libs', express.static(path.join(__dirname, 'node_modules')));
 
 // API Routes
 
+// Derive API key from signature using Polymarket SDK
+app.post('/api/derive-api-key', async (req, res) => {
+    try {
+        const { address, nonce, signature } = req.body;
+        
+        console.log('📝 Deriving API key for address:', address);
+        
+        // Use Polymarket SDK to derive API credentials
+        const { createL2Headers } = require('@polymarket/clob-client');
+        
+        // Derive credentials from signature
+        const credentials = createL2Headers(
+            address,
+            nonce,
+            signature
+        );
+        
+        console.log('✅ API credentials derived');
+        
+        res.json(credentials);
+        
+    } catch (error) {
+        console.error('❌ Error deriving API key:', error);
+        res.status(500).json({
+            error: error.message
+        });
+    }
+});
+
+// API Routes
+
+// Derive API credentials for user using Polymarket SDK
+app.post('/api/derive-api-key', async (req, res) => {
+    try {
+        const { address, signature, nonce } = req.body;
+        
+        console.log('🔑 Deriving API credentials for:', address);
+        console.log('  Nonce:', nonce);
+        
+        // Use SDK to derive credentials from signature
+        const { ClobClient } = require('@polymarket/clob-client');
+        
+        // Create temporary client
+        const tempClient = new ClobClient(
+            'https://clob.polymarket.com',
+            137 // Polygon chainId
+        );
+        
+        // Derive API key from signature
+        const credentials = await tempClient.deriveApiKey(signature, nonce);
+        
+        console.log('✅ API credentials derived successfully');
+        
+        res.json(credentials);
+        
+    } catch (error) {
+        console.error('❌ Error deriving credentials:', error.message);
+        res.status(500).json({
+            error: error.message,
+            details: error.toString()
+        });
+    }
+});
+
 // Proxy endpoint для размещения ставок в Polymarket
 app.post('/api/place-order', async (req, res) => {
     try {

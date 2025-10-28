@@ -19,7 +19,7 @@ class PolymarketOrderSigner {
             const creds = JSON.parse(cachedCreds);
             // Check if not expired (credentials valid for 7 days)
             if (Date.now() - creds.timestamp < 7 * 24 * 60 * 60 * 1000) {
-                console.log('Using cached API credentials');
+                console.log('✅ Using cached API credentials');
                 this.apiKey = creds.apiKey;
                 this.apiSecret = creds.apiSecret;
                 this.apiPassphrase = creds.apiPassphrase;
@@ -27,30 +27,26 @@ class PolymarketOrderSigner {
             }
         }
 
-        console.log('Creating new API credentials...');
-        
-        // For Polymarket CLOB, we need to use their specific authentication flow
-        // The message format must match exactly what they expect
-        const nonce = Date.now();
+        console.log('📝 Creating API credentials via backend...');
         
         try {
-            // First, we need to sign a specific message format
-            // Polymarket uses: "This signature is only being used for deriving a deterministic API key..."
+            // Call our backend to create credentials
+            // Backend will use Polymarket SDK to derive API key from signature
+            const nonce = Date.now();
             const message = `This signature is only being used for deriving a deterministic API key. Nonce: ${nonce}`;
             
-            console.log('Requesting signature for API key derivation...');
+            console.log('Requesting signature...');
             
-            // Sign message with personal_sign
+            // Sign message
             const signature = await window.ethereum.request({
                 method: 'personal_sign',
                 params: [ethers.utils.hexlify(ethers.utils.toUtf8Bytes(message)), address]
             });
 
-            console.log('Signature obtained:', signature);
+            console.log('✅ Message signed, creating API credentials...');
 
-            // Polymarket derives API credentials from the signature
-            // We need to call their API endpoint
-            const response = await fetch(`${this.clobApiUrl}/auth/derive-api-key`, {
+            // Send to backend to derive credentials using SDK
+            const response = await fetch('/api/derive-api-key', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -64,13 +60,13 @@ class PolymarketOrderSigner {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error('API response:', errorText);
-                throw new Error(`Failed to get API credentials: ${response.status} ${errorText}`);
+                console.error('Backend error:', errorText);
+                throw new Error(`Failed to derive API credentials: ${response.status} ${errorText}`);
             }
 
             const creds = await response.json();
             
-            console.log('Credentials response:', creds);
+            console.log('✅ API credentials derived');
             
             // Cache credentials
             localStorage.setItem(`polymarket_creds_${address}`, JSON.stringify({
@@ -82,11 +78,10 @@ class PolymarketOrderSigner {
             this.apiSecret = creds.apiSecret;
             this.apiPassphrase = creds.apiPassphrase;
 
-            console.log('✅ API credentials obtained');
             return creds;
 
         } catch (error) {
-            console.error('Error getting API credentials:', error);
+            console.error('❌ Error getting API credentials:', error);
             throw error;
         }
     }
