@@ -29,39 +29,48 @@ class PolymarketOrderSigner {
 
         console.log('Creating new API credentials...');
         
-        // Request credentials from Polymarket
-        // User needs to sign a message to prove ownership
-        const timestamp = Math.floor(Date.now() / 1000);
-        const message = `This request will not trigger a blockchain transaction or cost any gas fees.\n\nYour authentication status will reset after 7 days.\n\nTimestamp: ${timestamp}`;
+        // For Polymarket CLOB, we need to use their specific authentication flow
+        // The message format must match exactly what they expect
+        const nonce = Date.now();
         
         try {
-            // Sign message
+            // First, we need to sign a specific message format
+            // Polymarket uses: "This signature is only being used for deriving a deterministic API key..."
+            const message = `This signature is only being used for deriving a deterministic API key. Nonce: ${nonce}`;
+            
+            console.log('Requesting signature for API key derivation...');
+            
+            // Sign message with personal_sign
             const signature = await window.ethereum.request({
                 method: 'personal_sign',
-                params: [message, address]
+                params: [ethers.utils.hexlify(ethers.utils.toUtf8Bytes(message)), address]
             });
 
-            console.log('Message signed, requesting credentials from API...');
+            console.log('Signature obtained:', signature);
 
-            // Request credentials from Polymarket
-            const response = await fetch(`${this.clobApiUrl}/auth/api-key`, {
+            // Polymarket derives API credentials from the signature
+            // We need to call their API endpoint
+            const response = await fetch(`${this.clobApiUrl}/auth/derive-api-key`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     address: address,
-                    timestamp: timestamp,
+                    nonce: nonce,
                     signature: signature
                 })
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(`Failed to get API credentials: ${error.error || response.statusText}`);
+                const errorText = await response.text();
+                console.error('API response:', errorText);
+                throw new Error(`Failed to get API credentials: ${response.status} ${errorText}`);
             }
 
             const creds = await response.json();
+            
+            console.log('Credentials response:', creds);
             
             // Cache credentials
             localStorage.setItem(`polymarket_creds_${address}`, JSON.stringify({
@@ -291,8 +300,9 @@ class PolymarketOrderSigner {
         const { tokenId, makerAddress, ownerAddress, usdcAmount, side, signer } = params;
 
         try {
-            // 0. Get API credentials first
             const ownerAddr = ownerAddress || makerAddress;
+            
+            // 0. Get API credentials first
             console.log('Getting API credentials for:', ownerAddr);
             await this.getApiCredentials(ownerAddr);
             

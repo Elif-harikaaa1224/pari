@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const polymarketService = require('./polymarket-service');
+const { ClobClient } = require('@polymarket/clob-client');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,54 +21,46 @@ app.use('/libs', express.static(path.join(__dirname, 'node_modules')));
 // Proxy endpoint для размещения ставок в Polymarket
 app.post('/api/place-order', async (req, res) => {
     try {
-        const order = req.body;
-        console.log('📤 Placing order in Polymarket:');
-        console.log('  Token ID:', order.tokenId);
-        console.log('  Maker:', order.maker);
-        console.log('  Side:', order.side);
-        console.log('  Amount:', order.makerAmount);
+        const { order, signature, owner, apiKey, apiSecret, apiPassphrase } = req.body;
         
-        const response = await axios.post(
-            'https://clob.polymarket.com/order',
-            order,
+        console.log('📤 Placing order in Polymarket via SDK:');
+        console.log('  Owner:', owner);
+        console.log('  Maker:', order.maker);
+        console.log('  Token ID:', order.tokenId);
+        console.log('  Side:', order.side);
+        
+        // Create CLOB client with user's credentials
+        const clobClient = new ClobClient(
+            'https://clob.polymarket.com',
+            137, // Polygon chainId
             {
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                timeout: 30000 // 30 секунд
+                key: apiKey,
+                secret: apiSecret,
+                passphrase: apiPassphrase
             }
         );
         
-        console.log('✅ Order placed successfully!');
-        console.log('  Order ID:', response.data.orderId);
-        console.log('  Status:', response.data.status);
+        // Post signed order
+        const result = await clobClient.postOrder({
+            ...order,
+            signature: signature,
+            owner: owner
+        });
         
-        res.json(response.data);
+        console.log('✅ Order placed successfully!');
+        console.log('  Result:', result);
+        
+        res.json(result);
         
     } catch (error) {
         console.error('❌ Error placing order:');
+        console.error('  Error:', error.message);
+        console.error('  Details:', error.response?.data || error);
         
-        if (error.response) {
-            // Ошибка от Polymarket API
-            console.error('  Status:', error.response.status);
-            console.error('  Data:', error.response.data);
-            res.status(error.response.status).json({
-                error: error.response.data.error || error.response.data.message || 'Polymarket API error',
-                details: error.response.data
-            });
-        } else if (error.request) {
-            // Запрос был отправлен но ответа не получено
-            console.error('  No response from Polymarket');
-            res.status(503).json({
-                error: 'No response from Polymarket API. Try again later.'
-            });
-        } else {
-            // Что-то пошло не так при настройке запроса
-            console.error('  Error:', error.message);
-            res.status(500).json({
-                error: error.message
-            });
-        }
+        res.status(error.response?.status || 500).json({
+            error: error.message,
+            details: error.response?.data || error.toString()
+        });
     }
 });
 
