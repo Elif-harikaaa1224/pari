@@ -110,15 +110,34 @@ class PolymarketOrderSigner {
     }
 
     // Sign order with EIP-712
-    async signOrder(order, signer) {
+    async signOrder(order, signerAddress) {
         try {
             console.log('Signing order with EIP-712...');
 
             const domain = this.getDomain();
             const types = this.getTypes();
 
-            // Sign typed data
-            const signature = await signer._signTypedData(domain, types, order);
+            // Используем eth_signTypedData_v4 напрямую, чтобы избежать переключения сети
+            const typedData = {
+                types: {
+                    EIP712Domain: [
+                        { name: 'name', type: 'string' },
+                        { name: 'version', type: 'string' },
+                        { name: 'chainId', type: 'uint256' },
+                        { name: 'verifyingContract', type: 'address' }
+                    ],
+                    Order: types.Order
+                },
+                primaryType: 'Order',
+                domain: domain,
+                message: order
+            };
+
+            console.log('Requesting signature from wallet...');
+            const signature = await window.ethereum.request({
+                method: 'eth_signTypedData_v4',
+                params: [signerAddress, JSON.stringify(typedData)]
+            });
             
             console.log('✓ Order signed');
             return signature;
@@ -207,8 +226,8 @@ class PolymarketOrderSigner {
             console.log(`- Price: ${price}`);
             console.log(`- Outcome tokens: ${outcomeTokens.toFixed(4)}`);
 
-            // 2. Sign order
-            const signature = await this.signOrder(order, signer);
+            // 2. Sign order (передаем адрес вместо signer)
+            const signature = await this.signOrder(order, makerAddress);
 
             // 3. Post to CLOB
             const result = await this.postOrder(order, signature, makerAddress);

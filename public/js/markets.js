@@ -739,39 +739,12 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         status.innerHTML = `
             <div class="info">
                 ✅ USDC получен: ${usdcBalance}<br><br>
-                ⏳ Переключение на Polygon для подписи ордера...<br><br>
-                <small>Подтвердите переключение сети в кошельке...</small>
-            </div>
-        `;
-        
-        // Переключаемся на Polygon для подписи EIP-712
-        try {
-            console.log('Switching to Polygon for order signing...');
-            await wallet.switchToPolygon();
-            
-            // Небольшая пауза для стабилизации
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // Обновляем provider и signer после переключения
-            wallet.provider = new ethers.providers.Web3Provider(window.ethereum);
-            wallet.signer = wallet.provider.getSigner();
-            
-            console.log('Switched to Polygon successfully');
-        } catch (switchError) {
-            console.error('Network switch error:', switchError);
-            throw new Error('Не удалось переключиться на Polygon: ' + switchError.message);
-        }
-        
-        // Обновляем статус
-        status.innerHTML = `
-            <div class="info">
-                ✅ USDC получен: ${usdcBalance}<br><br>
                 ⏳ Создание ордера на Polymarket...<br><br>
-                <small>Подпишите ордер в кошельке...</small>
+                <small>Подпишите ордер в кошельке (можно на любой сети)...</small>
             </div>
         `;
         
-        // Размещаем ставку (теперь на Polygon)
+        // Размещаем ставку БЕЗ переключения сети (EIP-712 подпись работает на любой сети)
         let orderResult;
         try {
             orderResult = await placePolymarketOrder(parseFloat(usdcBalance), proxyAddress);
