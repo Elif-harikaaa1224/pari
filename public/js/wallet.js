@@ -50,11 +50,16 @@ const wallet = {
                 this.provider = new ethers.providers.Web3Provider(window.ethereum);
                 this.signer = this.provider.getSigner();
                 this.address = accounts[0];
+                
+                // Переключаемся на BSC при загрузке страницы
+                await this.switchToBSC();
+                
                 await this.calculateProxyAddress();
                 return true;
             }
             return false;
         } catch (error) {
+            console.error('Error checking wallet connection:', error);
             return false;
         }
     },

@@ -85,11 +85,21 @@ async function updateBalance() {
         const savedProxy = localStorage.getItem(`polymarket_proxy_${userAddress}`);
         
         if (savedProxy && ethers.utils.isAddress(savedProxy)) {
-            await wallet.switchToPolygon();
-            const balance = await wallet.getUSDCBalance(savedProxy);
+            // Используем RPC для проверки баланса без переключения сети
+            const polygonRPC = 'https://polygon-rpc.com';
+            const polygonProvider = new ethers.providers.JsonRpcProvider(polygonRPC);
+            const usdcContract = new ethers.Contract(
+                '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC on Polygon
+                ['function balanceOf(address) view returns (uint256)'],
+                polygonProvider
+            );
+            
+            const balance = await usdcContract.balanceOf(savedProxy);
+            const balanceFormatted = ethers.utils.formatUnits(balance, 6); // USDC has 6 decimals
+            
             document.getElementById('bettingBalance').textContent = 
-                parseFloat(balance).toFixed(2);
-            console.log(`💰 USDC balance on proxy (${savedProxy}):`, balance);
+                parseFloat(balanceFormatted).toFixed(2);
+            console.log(`💰 USDC balance on proxy (${savedProxy}):`, balanceFormatted);
         } else {
             document.getElementById('bettingBalance').textContent = '0.00';
             console.log('⚠️ No proxy address configured');
