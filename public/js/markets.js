@@ -700,26 +700,60 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         
         // Step 5: Размещение ставки
         updateStep(5, 'active');
+        onStatusUpdate('⏳ Переключите сеть на Polygon для размещения ставки...');
         
-        // Показываем инфо что USDC получен
-        status.innerHTML = `
-            <div class="success">
-                ✅ Bridge завершен успешно!<br><br>
-                <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br>
-                <strong>Получено USDC на Polygon:</strong> ${usdcBalance}<br>
-                <strong>Proxy Address:</strong> ${proxyAddress.slice(0, 10)}...${proxyAddress.slice(-8)}<br><br>
-                
-                <a href="https://layerzeroscan.com/tx/${result.txHash}" target="_blank" class="btn btn-primary">🔍 Отследить на LayerZero</a>
-                <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">📊 Polygon Address</a>
-                
-                <div style="background: #e3f2fd; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                    ℹ️ Для размещения ставки переключите сеть на <strong>Polygon</strong> в кошельке.<br>
-                    Затем вернитесь на эту страницу и разместите ставку вручную.
-                </div>
-            </div>
-        `;
+        // Запрашиваем переключение на Polygon
+        try {
+            await wallet.switchToPolygon();
+        } catch (switchError) {
+            console.log('User needs to switch network manually');
+        }
+        
+        // Ждем пока пользователь переключится на Polygon
+        let polygonConnected = false;
+        for (let attempt = 0; attempt < 60; attempt++) { // 2 минуты ожидание
+            try {
+                const checkProvider = new ethers.providers.Web3Provider(window.ethereum);
+                const checkNetwork = await checkProvider.getNetwork();
+                if (checkNetwork.chainId === 137) {
+                    polygonConnected = true;
+                    console.log('✓ Switched to Polygon');
+                    break;
+                }
+            } catch (e) {
+                console.error('Network check error:', e);
+            }
+            
+            onStatusUpdate(`⏳ Ожидание переключения на Polygon... (${attempt + 1}/60)`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // 2 секунды
+        }
+        
+        if (!polygonConnected) {
+            throw new Error('Не удалось переключиться на Polygon. Переключите сеть вручную.');
+        }
+        
+        onStatusUpdate('⏳ Создание и подпись ордера для Polymarket...');
+        
+        // Размещаем ставку
+        const orderResult = await placePolymarketOrder(parseFloat(usdcBalance), proxyAddress);
         
         updateStep(5, 'completed', '✅');
+        
+        // Success!
+        status.innerHTML = `
+            <div class="success">
+                ✅ Ставка успешно размещена на Polymarket!<br><br>
+                <strong>Событие:</strong> ${selectedMarket.question}<br>
+                <strong>Исход:</strong> ${selectedToken.outcome}<br>
+                <strong>Сумма:</strong> ${usdcBalance} USDC<br><br>
+                <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br>
+                <strong>Order ID:</strong> ${orderResult.orderID || 'pending'}<br><br>
+                
+                <a href="https://layerzeroscan.com/tx/${result.txHash}" target="_blank" class="btn btn-primary">🔍 LayerZero</a>
+                <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">📊 Polygon</a>
+                <a href="https://polymarket.com" target="_blank" class="btn btn-secondary">Polymarket</a>
+            </div>
+        `;
 
         // Обновить баланс
         setTimeout(updateBalance, 2000);
