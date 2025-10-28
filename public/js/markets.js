@@ -520,28 +520,25 @@ async function placeBet() {
             return;
         }
 
+        // 1. Проверка proxy адреса
+        const userAddress = wallet.address;
+        const savedProxy = localStorage.getItem(`polymarket_proxy_${userAddress}`);
+        
+        if (!savedProxy || !ethers.utils.isAddress(savedProxy)) {
+            alert('⚠️ Proxy адрес не настроен! Нажмите "⚙️ Управление Proxy"');
+            return;
+        }
+
         console.log('=== Starting bet placement ===');
         console.log('Connected wallet address:', wallet.address);
+        console.log('Proxy address:', savedProxy);
         console.log('Bet amount (BNB):', amountBNB);
 
-        // 1. Переключаемся на Polygon для работы с proxy wallet
-        await wallet.switchToPolygon();
+        // 2. Переключаемся на BSC для bridge
+        await wallet.switchToBSC();
         
-        // Обновляем signer после смены сети
-        wallet.signer = wallet.provider.getSigner();
-
-        // 2. Получить/создать proxy wallet
-        const userAddress = await wallet.getAddress();
-        console.log('User address from wallet.getAddress():', userAddress);
-        console.log('User address type:', typeof userAddress);
-        
-        const proxyAddress = await proxyWalletManager.getOrCreateProxyWallet(userAddress, wallet.signer);
-        
-        console.log('User address:', userAddress);
-        console.log('Proxy address:', proxyAddress);
-
-        // 3. Показать bridge modal
-        await showBridgeProcess(amountBNB, proxyAddress);
+        // 3. Показать bridge modal и выполнить bridge
+        await showBridgeProcess(amountBNB, savedProxy);
 
     } catch (error) {
         console.error('Bet placement error:', error);
@@ -579,59 +576,84 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
     }
 
     try {
-        // Step 1: Switch to BSC and swap BNB→USDT
+        // Функция для обновления статуса
+        const onStatusUpdate = (message) => {
+            status.innerHTML = `<div class="loading">${message}</div>`;
+        };
+
+        // Step 1: Получить quote
         updateStep(1, 'active');
-        status.innerHTML = '<div class="loading">⏳ Обмен BNB → USDT на PancakeSwap...</div>';
+        onStatusUpdate('⏳ Расчет лучшего маршрута...');
         
-        await wallet.switchToBSC();
-        const usdtAmount = await swapBNBToUSDT(amountBNB);
+        const estimatedOutput = await symbiosisBridge.getQuote(amountBNB);
+        console.log('Estimated USDC output:', estimatedOutput);
         
+        updateElement('bridgeUSDCAmount', `≈${estimatedOutput} USDC`);
         updateStep(1, 'completed', '✅');
         
-        // Step 2: Send through Stargate
+        // Step 2: Выполнить bridge через Symbiosis
         updateStep(2, 'active');
-        status.innerHTML = '<div class="loading">⏳ Отправка через Stargate на Polygon...</div>';
+        onStatusUpdate('⏳ Подготовка bridge транзакции...');
         
-        const bridgeTxHash = await sendThroughStargate(usdtAmount, proxyAddress);
+        // Убедимся что мы на BSC
+        await wallet.switchToBSC();
+        
+        const result = await symbiosisBridge.swapBNBtoUSDC(
+            amountBNB,
+            proxyAddress,
+            wallet.provider,
+            onStatusUpdate
+        );
         
         updateStep(2, 'completed', '✅');
         
-        // Step 3: Wait for USDC on Polygon
+        // Step 3: Ждем получения USDC на Polygon
         updateStep(3, 'active');
-        status.innerHTML = '<div class="loading">⏳ Ожидание получения USDC на Polygon...</div>';
+        onStatusUpdate('⏳ USDC отправляется на Polygon...');
         
-        await wallet.switchToPolygon();
-        await waitForUSDC(proxyAddress, usdcAmount);
+        // Ждем немного перед проверкой баланса
+        await new Promise(resolve => setTimeout(resolve, 30000)); // 30 секунд
         
         updateStep(3, 'completed', '✅');
         
-        // Step 4: Approve USDC for CTF Exchange
+        // Step 4: Проверяем баланс на Polygon
         updateStep(4, 'active');
-        status.innerHTML = '<div class="loading">⏳ Approve USDC для ставок...</div>';
+        onStatusUpdate('⏳ Проверка баланса USDC на Polygon...');
         
-        await approveUSDCForBetting(proxyAddress, usdcAmount);
+        await wallet.switchToPolygon();
+        const usdcBalance = await wallet.getUSDCBalance(proxyAddress);
+        console.log('USDC balance on proxy:', usdcBalance);
+        
+        if (parseFloat(usdcBalance) < parseFloat(estimatedOutput) * 0.9) {
+            // Если баланс меньше ожидаемого - даем больше времени
+            onStatusUpdate('⏳ Ожидание поступления USDC... (может занять до 15 минут)');
+            await new Promise(resolve => setTimeout(resolve, 60000)); // еще 1 минута
+        }
         
         updateStep(4, 'completed', '✅');
         
-        // Step 5: Place bet order
+        // Step 5: Размещение ставки
         updateStep(5, 'active');
-        status.innerHTML = '<div class="loading">⏳ Размещение ставки на Polymarket...</div>';
+        onStatusUpdate('⏳ Создание и подпись ордера для Polymarket...');
         
-        const orderResult = await placePolymarketOrder(usdcAmount, proxyAddress);
+        const orderResult = await placePolymarketOrder(estimatedOutput, proxyAddress);
         
         updateStep(5, 'completed', '✅');
         
         // Success!
         status.innerHTML = `
             <div class="success">
-                ✅ Ставка успешно размещена на Polymarket!<br>
-                <strong>Order ID:</strong> ${orderResult.orderID}<br>
-                <strong>Сумма:</strong> ${usdcAmount.toFixed(2)} USDC<br>
-                <strong>Потенциальный выигрыш:</strong> ${orderResult.outcomeTokens.toFixed(4)} tokens<br>
-                <br>
-                <a href="https://polymarket.com" target="_blank" class="btn btn-secondary">Проверить на Polymarket</a>
+                ✅ Ставка успешно размещена на Polymarket!<br><br>
+                <strong>Bridge TX:</strong> ${result.txHash}<br>
+                <strong>Получено USDC:</strong> ${result.outputAmount}<br>
+                <strong>Order ID:</strong> ${orderResult.orderID || 'pending'}<br><br>
+                <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">Проверить на PolygonScan</a>
+                <a href="https://polymarket.com" target="_blank" class="btn btn-secondary">Открыть Polymarket</a>
             </div>
         `;
+
+        // Обновить баланс
+        setTimeout(updateBalance, 2000);
 
     } catch (error) {
         console.error('Bridge process error:', error);
@@ -642,7 +664,8 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         if (activeStep) {
             activeStep.classList.remove('active');
             activeStep.classList.add('error');
-            activeStep.querySelector('.step-status').textContent = '❌';
+            const statusSpan = activeStep.querySelector('.step-status');
+            if (statusSpan) statusSpan.textContent = '❌';
         }
     }
 }
