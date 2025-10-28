@@ -11,10 +11,10 @@
         <div class="container">
             <h1>🎯 PariVision</h1>
             <div class="nav-links">
-                <a href="/">Главная</a>
-                <a href="/bridge">Пополнить</a>
-                <a href="/markets">Маркеты</a>
-                <a href="/my-bets">Мои ставки</a>
+                <a href="/" onclick="return confirmNavigation(event)">Главная</a>
+                <a href="/bridge" onclick="return confirmNavigation(event)">Пополнить</a>
+                <a href="/markets" onclick="return confirmNavigation(event)">Маркеты</a>
+                <a href="/my-bets" onclick="return confirmNavigation(event)">Мои ставки</a>
             </div>
             <div id="walletDisplay" class="wallet-display">Не подключено</div>
         </div>
@@ -139,7 +139,33 @@
     <script src="/js/polymarket-order.js"></script>
     <script src="/js/markets.js"></script>
     <script>
+        // Функция для безопасной навигации
+        function confirmNavigation(event) {
+            const bridgeModal = document.getElementById('bridgeModal');
+            if (bridgeModal && bridgeModal.style.display === 'block') {
+                const confirmed = confirm('Bridge процесс в процессе. Вы уверены что хотите покинуть страницу?');
+                if (!confirmed) {
+                    event.preventDefault();
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Предотвращаем любые непреднамеренные переходы
+        window.addEventListener('beforeunload', (e) => {
+            // Если есть активный процесс bridge, предупреждаем
+            const bridgeModal = document.getElementById('bridgeModal');
+            if (bridgeModal && bridgeModal.style.display === 'block') {
+                e.preventDefault();
+                e.returnValue = 'Bridge процесс в процессе. Вы уверены?';
+                return e.returnValue;
+            }
+        });
+
         window.addEventListener('load', async () => {
+            console.log('🚀 Page loaded, initializing...');
+            
             await initWallet();
             await initMarkets();
             
@@ -148,6 +174,8 @@
             if (manageProxyBtn) {
                 manageProxyBtn.addEventListener('click', manageProxyAddress);
             }
+            
+            console.log('✓ Markets page fully initialized');
         });
     </script>
 </body>

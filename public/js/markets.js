@@ -393,7 +393,19 @@ function setupModal() {
     }
     
     // Place bet button
-    document.getElementById('placeBetBtn').addEventListener('click', placeBet);
+    const placeBetBtn = document.getElementById('placeBetBtn');
+    if (placeBetBtn) {
+        placeBetBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🎯 Place bet button clicked!');
+            placeBet(e);
+            return false;
+        });
+        console.log('✓ Place bet button handler attached');
+    } else {
+        console.error('❌ placeBetBtn not found!');
+    }
 }
 
 function openOutcomesModal(event) {
