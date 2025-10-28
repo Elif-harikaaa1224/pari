@@ -698,77 +698,52 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
         
         updateStep(4, 'completed', '✅');
         
-        // Step 5: Размещение ставки
+        // Step 5: Размещение ставки - MANUAL
         updateStep(5, 'active');
         
-        console.log('=== Step 5: Placing bet ===');
+        console.log('=== Step 5: Manual bet placement ===');
         console.log('Selected market:', selectedMarket);
         console.log('Selected token:', selectedToken);
         console.log('USDC balance:', usdcBalance);
         console.log('Proxy address:', proxyAddress);
         
-        // НЕ переключаем сеть! Размещаем ставку напрямую через подпись
-        onStatusUpdate('⏳ Создание и подпись ордера для Polymarket...');
+        // Сохраняем данные для ручного размещения
+        const pendingOrder = {
+            marketSlug: selectedMarket.slug,
+            marketQuestion: selectedMarket.question,
+            tokenId: selectedToken.id,
+            outcome: selectedToken.outcome,
+            price: selectedToken.price,
+            usdcBalance: usdcBalance,
+            proxyAddress: proxyAddress,
+            timestamp: Date.now()
+        };
         
-        // Показываем процесс
-        status.innerHTML = `
-            <div class="info">
-                ✅ USDC получен: ${usdcBalance}<br><br>
-                ⏳ Переключение на Polygon для подписи...<br><br>
-                <small>Подтвердите переключение сети в кошельке...</small>
-            </div>
-        `;
-        
-        // Переключаемся на Polygon для подписи
-        try {
-            await wallet.switchToPolygon();
-            console.log('Switched to Polygon for signing');
-            
-            // Небольшая задержка для стабилизации
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-        } catch (switchError) {
-            console.error('Failed to switch to Polygon:', switchError);
-            throw new Error('Не удалось переключиться на Polygon для подписи');
-        }
-        
-        // Обновляем provider после переключения
-        wallet.provider = new ethers.providers.Web3Provider(window.ethereum);
-        wallet.signer = wallet.provider.getSigner();
-        
-        status.innerHTML = `
-            <div class="info">
-                ✅ USDC получен: ${usdcBalance}<br><br>
-                ⏳ Создание ордера на Polymarket...<br><br>
-                <small>Подпишите ордер в кошельке (можно на любой сети)...</small>
-            </div>
-        `;
-        
-        // Размещаем ставку БЕЗ переключения сети (EIP-712 подпись работает на любой сети)
-        let orderResult;
-        try {
-            orderResult = await placePolymarketOrder(parseFloat(usdcBalance), proxyAddress);
-            console.log('Order result:', orderResult);
-        } catch (orderError) {
-            console.error('Order placement error:', orderError);
-            throw new Error('Ошибка размещения ставки: ' + orderError.message);
-        }
+        localStorage.setItem('pendingPolymarketOrder', JSON.stringify(pendingOrder));
+        console.log('✓ Saved pending order to localStorage');
         
         updateStep(5, 'completed', '✅');
         
-        // Success!
+        // Show manual button to place bet
         status.innerHTML = `
             <div class="success">
-                ✅ <strong>Ставка успешно размещена на Polymarket!</strong><br><br>
-                <strong>Событие:</strong> ${selectedMarket.question}<br>
-                <strong>Исход:</strong> ${selectedToken.outcome}<br>
-                <strong>Сумма:</strong> ${usdcBalance} USDC<br><br>
-                <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br>
-                ${orderResult.orderID ? `<strong>Order ID:</strong> ${orderResult.orderID}<br>` : ''}
+                ✅ <strong>Bridge успешно завершен!</strong><br><br>
+                <strong>USDC получен:</strong> ${usdcBalance}<br>
+                <strong>Адрес:</strong> ${proxyAddress}<br><br>
+                <strong>Bridge TX:</strong> <a href="https://bscscan.com/tx/${result.txHash}" target="_blank">${result.txHash.slice(0, 10)}...</a><br><br>
+                
+                <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin-top: 15px; border: 2px solid #2196F3;">
+                    <strong>📝 Завершение ставки:</strong><br><br>
+                    1. Нажмите кнопку ниже<br>
+                    2. Подпишите ордер в кошельке<br>
+                    3. Готово!<br><br>
+                    <button onclick="completePendingOrder()" class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 18px; font-weight: bold;">
+                        🎯 Разместить ставку на Polymarket
+                    </button>
+                </div>
                 <br>
-                <a href="https://layerzeroscan.com/tx/${result.txHash}" target="_blank" class="btn btn-primary">🔍 LayerZero</a>
+                <a href="https://layerzeroscan.com/tx/${result.txHash}" target="_blank" class="btn btn-secondary">🔍 LayerZero</a>
                 <a href="https://polygonscan.com/address/${proxyAddress}" target="_blank" class="btn btn-secondary">📊 Polygon</a>
-                <a href="https://polymarket.com/event/${selectedMarket.slug}" target="_blank" class="btn btn-primary">📊 View on Polymarket</a>
             </div>
         `;
         
@@ -787,6 +762,82 @@ async function showBridgeProcess(amountBNB, proxyAddress) {
             const statusSpan = activeStep.querySelector('.step-status');
             if (statusSpan) statusSpan.textContent = '❌';
         }
+    }
+}
+
+// Complete pending order from localStorage
+async function completePendingOrder() {
+    try {
+        const pendingOrderData = localStorage.getItem('pendingPolymarketOrder');
+        if (!pendingOrderData) {
+            alert('Нет сохраненного ордера');
+            return;
+        }
+        
+        const order = JSON.parse(pendingOrderData);
+        console.log('Completing pending order:', order);
+        
+        // Восстанавливаем selectedToken и selectedMarket
+        selectedToken = {
+            id: order.tokenId,
+            outcome: order.outcome,
+            price: order.price
+        };
+        
+        selectedMarket = {
+            slug: order.marketSlug,
+            question: order.marketQuestion
+        };
+        
+        // Показываем процесс
+        const modal = document.getElementById('betModal');
+        const modalContent = document.querySelector('.modal-content');
+        modal.style.display = 'block';
+        
+        modalContent.innerHTML = `
+            <span class="close" onclick="closeBridgeModal()">&times;</span>
+            <h2>Размещение ставки</h2>
+            <div class="bridge-status">
+                <div class="info">
+                    ⏳ Создание и подпись ордера...<br><br>
+                    <strong>Событие:</strong> ${order.marketQuestion}<br>
+                    <strong>Исход:</strong> ${order.outcome}<br>
+                    <strong>Сумма:</strong> ${order.usdcBalance} USDC<br><br>
+                    <small>Подпишите в кошельке...</small>
+                </div>
+            </div>
+        `;
+        
+        // Размещаем ставку
+        const orderResult = await placePolymarketOrder(
+            parseFloat(order.usdcBalance),
+            order.proxyAddress
+        );
+        
+        console.log('✓ Order placed:', orderResult);
+        
+        // Удаляем из localStorage
+        localStorage.removeItem('pendingPolymarketOrder');
+        
+        // Показываем успех
+        const status = modalContent.querySelector('.bridge-status');
+        status.innerHTML = `
+            <div class="success">
+                ✅ <strong>Ставка успешно размещена!</strong><br><br>
+                <strong>Событие:</strong> ${order.marketQuestion}<br>
+                <strong>Исход:</strong> ${order.outcome}<br>
+                <strong>Сумма:</strong> ${order.usdcBalance} USDC<br><br>
+                ${orderResult.orderID ? `<strong>Order ID:</strong> ${orderResult.orderID}<br><br>` : ''}
+                <a href="https://polymarket.com/event/${order.marketSlug}" target="_blank" class="btn btn-primary">📊 View on Polymarket</a>
+            </div>
+        `;
+        
+        // Обновляем баланс
+        await updateBalance();
+        
+    } catch (error) {
+        console.error('Error completing order:', error);
+        alert('Ошибка: ' + error.message);
     }
 }
 
