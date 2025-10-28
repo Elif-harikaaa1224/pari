@@ -209,17 +209,31 @@ class PolymarketContract {
             const price = await this.getBestPrice(tokenId, side);
             console.log('Best price:', price);
 
-            // 2. Fetch best order from orderbook to fill
-            const response = await fetch(
-                `https://clob.polymarket.com/book?token_id=${tokenId}&side=${side === 'BUY' ? 'SELL' : 'BUY'}`
+            // 2. Try to fetch signed orders from CLOB
+            // Note: orderbook endpoint возвращает только цены, нужен другой endpoint для подписанных ордеров
+            console.log('🔍 Fetching signed orders from CLOB...');
+            
+            let response = await fetch(
+                `https://clob.polymarket.com/orders?token_id=${tokenId}&side=${side === 'BUY' ? 'SELL' : 'BUY'}`
             );
 
             if (!response.ok) {
-                throw new Error(`Failed to fetch orderbook: ${response.status}`);
+                console.log('❌ Orders endpoint failed, trying book endpoint...');
+                response = await fetch(
+                    `https://clob.polymarket.com/book?token_id=${tokenId}&side=${side === 'BUY' ? 'SELL' : 'BUY'}`
+                );
+            }
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch orders: ${response.status}`);
             }
 
             const orderbook = await response.json();
+            console.log('Full orderbook response:', orderbook);
+            
             const orders = side === 'BUY' ? orderbook.asks : orderbook.bids;
+            console.log('Orders array:', orders);
+            console.log('Orders count:', orders ? orders.length : 0);
 
             if (!orders || orders.length === 0) {
                 throw new Error('No matching orders available');
@@ -227,21 +241,28 @@ class PolymarketContract {
 
             const bestOrder = orders[0];
             console.log('Best order from API:', bestOrder);
-            console.log('Order structure:', JSON.stringify(bestOrder, null, 2));
+            console.log('Best order keys:', Object.keys(bestOrder));
+            console.log('Full order structure:', JSON.stringify(bestOrder, null, 2));
 
             // Extract order data - API может возвращать разную структуру
             let orderData, signature;
             
             if (bestOrder.order) {
                 // Структура: { order: {...}, signature: '...' }
+                console.log('📋 Format: nested order object');
                 orderData = bestOrder.order;
                 signature = bestOrder.signature;
             } else if (bestOrder.salt) {
                 // Структура: сам ордер на верхнем уровне
+                console.log('📋 Format: flat order object');
                 orderData = bestOrder;
                 signature = bestOrder.signature || bestOrder.sig;
             } else {
-                throw new Error('Unknown order structure from API');
+                // Попробуем использовать весь объект как есть
+                console.log('📋 Format: unknown, using full object');
+                console.log('Available fields:', Object.keys(bestOrder));
+                orderData = bestOrder;
+                signature = bestOrder.signature || bestOrder.sig || '0x';
             }
 
             console.log('Extracted order data:', orderData);
